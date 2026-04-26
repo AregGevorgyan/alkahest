@@ -75,6 +75,7 @@ Compiled evaluation
       Number of input variables.
 
 .. function:: emit_c(expr: Expr, vars: list[Expr], var_name: str, fn_name: str) -> str
+   :no-index:
 
    Emit a standalone C function string::
 

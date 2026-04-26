@@ -137,6 +137,7 @@ Polynomial utilities
 --------------------
 
 .. function:: horner(expr: Expr, var: Expr) -> Expr
+   :no-index:
 
    Rewrite a polynomial expression in Horner's form::
 

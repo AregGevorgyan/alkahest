@@ -60,6 +60,7 @@ Utility passes
 --------------
 
 .. function:: collect_like_terms(expr: Expr) -> Expr
+   :no-index:
 
    Collect terms with the same monomial factor::
 
@@ -67,6 +68,7 @@ Utility passes
       # r == 5*x
 
 .. function:: poly_normal(expr: Expr, vars: list[Expr]) -> Expr
+   :no-index:
 
    Normalize *expr* to canonical polynomial form over the given variables.
    Raises ``ConversionError`` if the expression is not polynomial.

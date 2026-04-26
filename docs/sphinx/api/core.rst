@@ -44,7 +44,7 @@ ExprPool
 
    .. method:: save_to(path: str) -> None
 
-      Serialize the pool to disk. All ``ExprId``s remain valid after
+      Serialize the pool to disk. All ``ExprId``\ s remain valid after
       reloading.
 
    .. classmethod:: load_from(path: str) -> ExprPool
@@ -96,7 +96,7 @@ Expr
    **Note on domains**
 
    ``Symbol("x", "real")`` and ``Symbol("x", "complex")`` are
-   distinct expressions with different ``ExprId``s. Domains are part of
+   distinct expressions with different ``ExprId``\ s. Domains are part of
    structural identity, not a global assumption.
 
 DerivedResult

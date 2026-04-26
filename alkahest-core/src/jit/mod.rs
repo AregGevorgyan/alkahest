@@ -113,6 +113,7 @@ pub struct CompiledFn {
     // execution_engine must be declared before _context so it drops first;
     // the context must outlive the execution engine.
     #[cfg(feature = "jit")]
+    #[allow(dead_code)]
     execution_engine: inkwell::execution_engine::ExecutionEngine<'static>,
     #[cfg(feature = "jit")]
     _context: Box<inkwell::context::Context>,
@@ -365,7 +366,6 @@ mod llvm_backend {
     use inkwell::{
         builder::Builder,
         context::Context,
-        execution_engine::ExecutionEngine,
         module::Module,
         targets::{InitializationConfig, Target},
         types::BasicMetadataTypeEnum,
