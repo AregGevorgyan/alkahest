@@ -1,0 +1,50 @@
+# V5-9: CUDA compute-sanitizer nightly CI
+# Runs memcheck and racecheck on CUDA tests. Requires self-hosted GPU runner.
+name: CUDA Nightly (compute-sanitizer)
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 02:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  cuda-sanitizer:
+    name: CUDA memcheck + racecheck
+    runs-on: [self-hosted, gpu-3090]
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build and run CUDA tests
+        env:
+          ALKAHEST_GPU_TESTS: "1"
+        run: cargo test --features cuda,groebner-cuda --no-fail-fast
+
+      - name: Run compute-sanitizer memcheck
+        env:
+          ALKAHEST_GPU_TESTS: "1"
+        run: |
+          compute-sanitizer --tool memcheck \
+            cargo test --features cuda,groebner-cuda --no-fail-fast
+        continue-on-error: false
+
+      - name: Run compute-sanitizer racecheck
+        env:
+          ALKAHEST_GPU_TESTS: "1"
+        run: |
+          compute-sanitizer --tool racecheck \
+            cargo test --features cuda,groebner-cuda
+        continue-on-error: true  # racecheck may have false positives
+
+      - name: Upload sanitizer logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitizer-logs-${{ github.run_id }}
+          path: |
+            /tmp/sanitizer-*.log
+          retention-days: 30

@@ -1,0 +1,17 @@
+[package]
+name = "alkahest-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+afl = "0.15"
+alkahest-core = { path = "../alkahest-core" }
+
+[[bin]]
+name = "fuzz_expr_builder"
+path = "src/bin/fuzz_expr_builder.rs"
+
+[[bin]]
+name = "fuzz_simplifier"
+path = "src/bin/fuzz_simplifier.rs"

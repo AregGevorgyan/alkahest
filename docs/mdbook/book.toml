@@ -1,0 +1,10 @@
+[book]
+authors = ["Alkahest Contributors"]
+language = "en"
+src = "src"
+title = "Alkahest — User Guide"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/alkahest/alkahest"

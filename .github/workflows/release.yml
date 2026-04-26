@@ -1,0 +1,85 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# V1-9 scaffold: wheel build matrix for PyPI publication.
+#
+# Skeleton only — actual PyPI publish is disabled until the release
+# cadence and API freeze (V1-8) are in place.  Trigger manually via
+# workflow_dispatch on a tagged commit to exercise the build matrix
+# without publishing.
+
+jobs:
+  build-wheels:
+    name: wheel ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-2022]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y libflint-dev llvm-15-dev
+
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install flint llvm@15
+
+      - name: Install system deps (Windows)
+        if: runner.os == 'Windows'
+        run: choco install llvm --version=15.0.7 -y
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build wheel (Linux manylinux)
+        if: runner.os == 'Linux'
+        run: maturin build --release --strip --manylinux 2_28 --out dist
+
+      - name: Build wheel (macOS universal2)
+        if: runner.os == 'macOS'
+        run: maturin build --release --strip --target universal2-apple-darwin --out dist
+
+      - name: Build wheel (Windows)
+        if: runner.os == 'Windows'
+        run: maturin build --release --strip --out dist
+
+      - name: Smoke test
+        run: |
+          pip install --find-links dist alkahest
+          python -c "import alkahest; p = alkahest.ExprPool(); x = p.symbol('x'); print(alkahest.simplify(x + 0))"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-py${{ matrix.python }}
+          path: dist/*.whl
+
+  publish:
+    name: publish to PyPI
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    # Disabled until V1-8 semver checks are green on main for 2+ weeks.
+    if-disabled: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist

@@ -1,0 +1,49 @@
+# Suppress GMP/MPFR/FLINT internal thread-local caches.
+# These allocations are intentional caches that are not freed before process
+# exit; they are not leaks in the project's own Rust code.  The same
+# allocations are suppressed in the LSan step via lsan.supp.
+
+{
+   gmp_default_allocate_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   fun:__gmp_default_allocate
+   ...
+}
+
+{
+   gmp_default_reallocate_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   fun:__gmp_default_reallocate
+   ...
+}
+
+{
+   flint_malloc_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   fun:flint_malloc
+   ...
+}
+
+{
+   flint_realloc_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   fun:flint_realloc
+   ...
+}
+
+{
+   flint_calloc_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   fun:flint_calloc
+   ...
+}

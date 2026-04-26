@@ -1,0 +1,51 @@
+name: semver-check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cargo-semver-checks:
+    name: cargo semver-checks (alkahest-core::stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libflint-dev llvm-15-dev
+
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+
+      - name: Check alkahest-core public API
+        # cargo-semver-checks enables all features by default. Removing
+        # cuda-version-from-build-system from the cudarc dep (Cargo.toml) is
+        # what keeps the cuda feature from panicking when nvcc is absent.
+        run: cargo semver-checks check-release -p alkahest-core --baseline-rev origin/main
+
+  python-api-freeze:
+    name: python alkahest.__all__ freeze check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify alkahest.__all__ is append-only vs main
+        run: |
+          python scripts/check_api_freeze.py origin/main

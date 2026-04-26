@@ -1,0 +1,23 @@
+[package]
+name = "alkahest-py"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "alkahest"
+crate-type = ["cdylib"]
+
+[features]
+numpy = ["dep:numpy"]
+parallel = ["alkahest-core/parallel"]
+groebner = ["alkahest-core/groebner"]
+cuda = ["alkahest-core/cuda"]
+
+[dependencies]
+alkahest-core = { path = "../alkahest-core" }
+pyo3.workspace = true
+numpy = { version = "0.21", optional = true }
+
+[dev-dependencies]

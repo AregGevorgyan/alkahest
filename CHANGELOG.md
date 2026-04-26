@@ -1,0 +1,112 @@
+# Changelog
+
+## 1.0.0
+
+### Features
+
+- Production NVPTX codegen for `sm_86` (Ampere): full inkwell-driven lowering, `libdevice.10.bc` linking, PTX emission via LLVM target machine, `cudarc 0.19` runtime — 16.2× speedup over CPU JIT on RTX 3090
+- Gröbner-based polynomial system solver (`alkahest.solve`): Lex basis → triangular back-substitution → exact symbolic solutions including irrational roots (`sqrt(2)/2`)
+- Custom `alkahest` MLIR dialect: `Sym`, `Const`, `Add`, `Mul`, `Pow`, `Call`, `Horner`, `PolyEval`, `SeriesTaylor`, `IntervalEval`, `RationalFn` ops; three lowering targets (ArithMath, StableHLO, LLVM); 1000-case round-trip proptest
+- CUDA Macaulay-matrix row reduction (`--features groebner-cuda`): PTX elimination kernel, multi-prime CRT rational reconstruction, CPU fallback when no CUDA device present
+- Semver-stable 1.0 API: `alkahest_core::stable` / `alkahest_core::experimental` split; `alkahest.__all__` freeze; `cargo semver-checks` + `scripts/check_api_freeze.py` in CI
+- Primitive registry expanded to 23 primitives: added `tan`, `sinh`, `cosh`, `tanh`, `asin`, `acos`, `atan`, `erf`, `erfc`, `abs`, `sign`, `floor`, `ceil`, `round`, `atan2`, `gamma`, `min`, `max`
+- Cross-CAS benchmark driver: Mathematica WolframEngine 14.3 and SymEngine 0.14 adapters; all six benchmark tasks implemented; nightly `--competitors` CI; per-competitor ratio columns in HTML report
+- Persistent `ExprPool`: `save_to`, `load_from`, `open_persistent`, `checkpoint`; versioned binary format (`ALKP` magic); atomic temp-rename + fsync crash safety; all `ExprData` variants including `Piecewise` and `Predicate`
+
+### Internal
+
+- Structured errors across all subsystems: `.code`, `.remediation`, `.span` on every `AlkahestError` variant; `CudaError` (`E-CUDA-001…004`) and `SolverError` (`E-SOLVE-001…003`) added; PyO3 exception classes with typed attributes
+
+## 0.5.0
+
+### Features
+
+- Lean 4 certificate exporter: pure-Rust, no FFI; 20+ rule→tactic mappings (`norm_num`, `simp`, `ring`, `rw`); `emit_lean_expr`, `emit_step`, `emit_goal`
+- StableHLO / XLA bridge: pure-text MLIR emitter for `Add`, `Mul`, `Pow`, `sin`, `cos`, `exp`, `log`, `sqrt` → `stablehlo.*` ops via `to_stablehlo`
+- Expanded Risch integration: exp/log tower + linear substitution; `∫ log(x) dx`, `∫ exp(a·x+b) dx`, `∫ c·x·exp(x) dx`, `∫ 1/(a·x+b) dx`; `is_linear_in` helper
+- Branch-cut-aware log/exp simplification: `LogOfProduct` records `SideCondition::Positive` per factor; `SimplifyConfig::allow_branch_cut_rewrites`; `log_exp_rules_safe()` excludes `LogOfProduct`
+- JAX primitive source integration: `to_jax` registers a symbolic expression with `def_impl`, `def_abstract_eval`, JVP rule (via symbolic grad), and vmap batching; graceful no-JAX fallback
+- Parallel F4 Gröbner basis: Buchberger + product-criterion pruning; Rayon parallel S-poly reduction; `interreduce`; `Lex`/`GrLex`/`GRevLex` orders (`--features groebner`)
+
+### Internal
+
+- Structured errors MVP: `remediation()` and `span()` on `ConversionError` and `IntegrationError`
+- Lean CI: GitHub Actions workflow generates 8 proof files and verifies via `lean` compiler; Mathlib build cached
+- CUDA compute-sanitizer nightly: `memcheck` + `racecheck` on self-hosted `gpu-3090` runner; sanitizer logs uploaded as artifacts
+- GPU benchmark suite: `GPUPolynomialEval` (1M-pt, 5-var), `GPUJacobian` (65k-pt), `DLPackZeroCopy`; `--gpu` flag added to `cas_comparison.py`
+
+## 0.4.0
+
+### Features
+
+- Horner-form code emission: `horner(expr, var)`, `emit_c(expr, var, var_name, fn_name)`
+- NumPy / JAX batch evaluation: `CompiledFn.call_batch_raw`, `numpy_eval` accepting NumPy, PyTorch, and JAX arrays via DLPack
+- `collect_like_terms`: `2*x + 3*x → 5*x`
+- `poly_normal`: polynomial normal form over given variables
+- FLINT 3.x feature gate (`--features flint3`)
+- Sharded `ExprPool`: concurrent insertion via `DashMap` (`--features parallel`)
+
+### Internal
+
+- GitHub Actions CI: tier-1 PR checks (< 10 min) + nightly integration (4–8 h) with AFL++ fuzzing, deep proptest, Valgrind, and SymPy oracle
+
+## 0.3.0
+
+### Features
+
+- Reverse-mode automatic differentiation (`symbolic_grad`)
+- Symbolic matrices and Jacobian (`Matrix`, `jacobian`)
+- ODE representation and first-order lowering (`ODE`, `lower_to_first_order`)
+- DAE structural analysis and Pantelides index reduction (`DAE`, `pantelides`)
+- Acausal component modeling (`AcausalSystem`, `Port`, `resistor`)
+- Sensitivity analysis: forward (`sensitivity_system`) and adjoint (`adjoint_system`)
+- Hybrid system event handling (`HybridODE`, `Event`)
+- LLVM JIT compiled evaluation (`compile_expr`, `CompiledFn`, `eval_expr`; `--features jit`, LLVM 15)
+- Ball arithmetic (`ArbBall`, `AcbBall`, `interval_eval`) backed by Arb/FLINT
+- Parallel simplification (`simplify_par`; `--features parallel`)
+- Multivariate polynomial GCD via FLINT (`MultiPoly::gcd`, `RationalFunction::new`)
+
+### Internal
+
+- SymPy oracle cross-validation test suite for `integrate`
+- E-graph vs rule-based Criterion benchmark (`bench_simplifier_comparison`)
+- Rule engine hardening: trig/log rule sets, pattern rules, substitution, CI, AFL++ fuzzing
+
+## 0.2.0
+
+### Features
+
+- E-graph equality saturation via egglog (`simplify_egraph`, `--features egraph`)
+- Associative-commutative pattern matcher
+- Forward-mode automatic differentiation (`diff_forward`)
+- Rule-based integration: Risch subset (power, trig, exp/log table entries)
+- `RationalFunction` arithmetic with multivariate GCD normalization
+
+### Internal
+
+- Pluggable e-graph cost functions: `SizeCost`, `DepthCost`, `OpCost`, `StabilityCost`; phased saturation via `node_limit` / `iter_limit`
+- `PrimitiveRegistry` with `Capabilities` bitflags and `coverage_report()`; sin/cos/exp/log/sqrt registered
+- `TracedFn`, `trace`, `grad`, `jit`, `trace_fn` Python transformation façade
+- DLPack + `__array__` protocol on compiled functions
+- `Piecewise` / `Predicate` expression nodes; diff/simplify/pattern/poly updated
+- JAX-style pytree support (`flatten_exprs`, `unflatten_exprs`, `map_exprs`, `TreeDef`)
+- `alkahest.context(pool=..., domain=..., simplify=True)` context manager
+- Flat n-ary egglog: binary output flattened back to n-ary `Add`/`Mul` on extraction
+- `canonicalize_linear` post-extraction pass
+- Cross-CAS benchmark driver: HTML/JSONL report, Criterion dashboard
+
+## 0.1.0
+
+### Features
+
+- Hash-consed expression DAG (`ExprPool`, `ExprId`): structural equality as pointer comparison, automatic subexpression sharing
+- N-ary `Add` / `Mul` with AC normalization at construction
+- Arbitrary-precision integers and rationals (FLINT/GMP)
+- Symbol domains: `real`, `positive`, `nonnegative`, `integer`, `complex`
+- Rule-based simplification with fixpoint iteration: identity elements, constant folding, polynomial normalization
+- Symbolic differentiation with chain/product/quotient rules (`diff`)
+- `UniPoly`: dense univariate polynomial backed by FLINT; GCD, degree, coefficients, arithmetic
+- `MultiPoly`: sparse multivariate polynomial over ℤ
+- `RationalFunction`: quotient with automatic GCD normalization
+- PyO3 bindings for the full core API
+- Derivation logs: ordered `RewriteStep` list on every `DerivedResult`

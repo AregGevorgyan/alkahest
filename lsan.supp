@@ -1,0 +1,13 @@
+# GMP/MPFR maintain thread-local caches for constants (log2, pi, etc.) and
+# intermediate computation buffers.  These are intentional internal caches,
+# not leaks in our code.  The same allocations are suppressed in the ASan step
+# via LSAN_OPTIONS=detect_leaks=0; here we suppress them by name so that
+# LeakSanitizer can still catch any Rust-side leaks.
+leak:__gmp_default_allocate
+leak:__gmp_default_reallocate
+leak:const_log2
+leak:mpfr_exp_2
+leak:mpfr_free_cache
+leak:flint_malloc
+leak:flint_realloc
+leak:flint_calloc

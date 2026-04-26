@@ -1,0 +1,47 @@
+[package]
+name = "alkahest-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+egraph = ["dep:egglog"]
+jit   = ["dep:inkwell"]
+parallel = ["dep:rayon", "dep:dashmap"]
+# Phase 29: use libflint3-dev (FLINT ≥ 3.0) for ArbBall when available.
+# Falls back to MPFR by default; flip this on Ubuntu 24.04 where libflint3-dev ships.
+flint3 = []
+# V5-11: Gröbner basis computation (F4-style over ℚ)
+groebner = []
+# V1-1: production NVPTX JIT backend. Implies `jit` for the inkwell-based
+# codegen. Requires LLVM 15 with the NVPTX target (`llc --version | grep nvptx`)
+# at build time and libcuda.so.1 at runtime. cudarc uses dynamic loading so the
+# feature builds even on machines without CUDA installed.
+cuda = ["jit", "dep:cudarc"]
+# V1-7: GPU-accelerated Gröbner basis via Macaulay-matrix row reduction mod p.
+# Only needs cudarc (driver + NVRTC), NOT inkwell/jit — the reduction kernel is
+# a static PTX string, not LLVM-generated. Falls back to pure-Rust row reduction
+# when no CUDA device is present at runtime.
+groebner-cuda = ["groebner", "dep:cudarc"]
+
+[dependencies]
+rug = { version = "1", features = ["integer", "rational", "float"] }
+egglog  = { version = "0.4", optional = true }
+inkwell = { version = "0.9", features = ["llvm15-0-prefer-dynamic"], optional = true }
+rayon   = { version = "1",   optional = true }
+dashmap = { version = "6",   optional = true }
+cudarc  = { version = "0.19", default-features = false, features = ["driver", "nvrtc", "fallback-dynamic-loading", "cuda-12060"], optional = true }
+bitflags = "2.11.1"
+
+[dev-dependencies]
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "alkahest_bench"
+harness = false
+
+[[example]]
+name = "dump_ptx"
+required-features = ["cuda"]

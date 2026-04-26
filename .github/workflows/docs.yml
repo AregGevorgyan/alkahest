@@ -1,0 +1,47 @@
+name: docs
+
+# V1-11 scaffold: build the user guide (mdBook) + Python API (Sphinx)
+# + Rust API (rustdoc). Publish is disabled until the docs are past
+# their TODO stage; for now this just catches breakage.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  mdbook:
+    name: mdbook build
+    runs-on: ubuntu-latest
+    continue-on-error: true   # docs being revamped; don't block PRs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mdbook
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook
+      - run: mdbook build docs/mdbook
+
+  sphinx:
+    name: sphinx build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install sphinx furo
+      - run: sphinx-build -W --keep-going docs/sphinx docs/sphinx/_build
+
+  rustdoc:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install system deps
+        run: sudo apt-get install -y libflint-dev llvm-15-dev
+      - run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"

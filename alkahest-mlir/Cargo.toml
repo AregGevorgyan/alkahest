@@ -1,0 +1,25 @@
+[package]
+name = "alkahest-mlir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "MLIR 'alkahest' dialect — scaffolding for V1-5 (see plan.md)"
+
+[lib]
+name = "alkahest_mlir"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Real MLIR bindings arrive with V1-5 full implementation.  The current
+# crate compiles without any native deps so it can land in the workspace
+# and receive basic CI coverage before the LLVM17/MLIR toolchain is wired
+# up on all platforms.
+mlir-native = []
+
+[dependencies]
+alkahest-core = { path = "../alkahest-core" }
+
+[dev-dependencies]
+proptest = "1"

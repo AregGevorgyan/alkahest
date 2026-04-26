@@ -1,0 +1,63 @@
+# V5-8: Lean 4 certificate verification CI
+# Installs Lean 4 + Mathlib and verifies generated .lean proofs.
+name: Lean 4 Proofs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'alkahest-core/src/lean/**'
+      - 'tests/lean_corpus.py'
+      - '.github/workflows/lean.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'alkahest-core/src/lean/**'
+      - 'tests/lean_corpus.py'
+
+jobs:
+  lean-verify:
+    name: Verify Lean 4 proofs
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lean 4
+        uses: leanprover/lean4-action@v1
+        with:
+          lean-version: 'v4.9.0'
+
+      - name: Cache Mathlib
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.elan
+            ~/.mathlib4
+          key: mathlib-${{ hashFiles('**/lean-toolchain') }}-v1
+          restore-keys: |
+            mathlib-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install maturin and build alkahest
+        run: |
+          pip install maturin
+          maturin develop -m alkahest-py/Cargo.toml
+
+      - name: Generate Lean proofs
+        run: |
+          python tests/lean_corpus.py --output /tmp/lean_proofs/
+
+      - name: Verify proofs with Lean
+        run: |
+          cd /tmp/lean_proofs
+          for f in *.lean; do
+            echo "Verifying $f..."
+            lean --make "$f" || { echo "FAILED: $f"; exit 1; }
+          done
+          echo "All Lean proofs verified."

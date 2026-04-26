@@ -1,0 +1,43 @@
+name: ci-cross
+
+# V1-10 scaffold: Windows + macOS CI parity check.
+#
+# Runs a small subset of the test suite on non-Linux runners so the
+# `#[cfg(unix)]` / hard-coded `/tmp` / path-separator audit has live
+# signal.  Full parity is a follow-up once FLINT/LLVM discovery is
+# proven on all three platforms.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cross:
+    name: cross ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # Windows is excluded: gmp-mpfr-sys explicitly refuses to build on MSVC
+    # ("Windows MSVC target is not supported") even for cargo check, because
+    # build scripts always run.  Windows parity requires switching to the GNU
+    # toolchain + MSYS2; tracked as a future milestone.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install FLINT (macOS)
+        run: brew install flint
+
+      - name: cargo build (core, no extras)
+        run: cargo build -p alkahest-core --no-default-features
+
+      - name: cargo test (pool + kernel)
+        run: cargo test -p alkahest-core --lib kernel::pool_persist --no-default-features

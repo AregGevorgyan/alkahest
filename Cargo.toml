@@ -1,0 +1,12 @@
+[workspace]
+members = ["alkahest-core", "alkahest-mlir", "alkahest-py"]
+resolver = "2"
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+authors = ["Alkahest Contributors"]
+license = "MIT"
+
+[workspace.dependencies]
+pyo3 = { version = "0.21", features = ["extension-module"] }

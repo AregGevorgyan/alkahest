@@ -1,0 +1,51 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+*.orig
+
+# Python
+/.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+*.whl
+wheels/
+.hypothesis/
+.pytest_cache/
+.ruff_cache/
+
+# cargo-fuzz
+fuzz/out/
+fuzz/corpus/
+fuzz/artifacts/
+
+# Docs builds
+docs/sphinx/_build/
+docs/mdbook/book/
+
+# Benchmark results (generated output — not source)
+benchmarks/results/
+
+# Criterion benchmark output (written into target/ which is already ignored)
+**/criterion/
+
+# Coverage
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.*
+
+# LLVM / MLIR artifacts
+*.ll
+*.bc
+
+# Misc
+tmp/
+.DS_Store
+.idea/
+.vscode/
+*.swp
