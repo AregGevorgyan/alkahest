@@ -45,7 +45,7 @@ use alkahest_core::{
 use alkahest_core::compile_cuda as core_compile_cuda;
 use alkahest_core::{
     diff as core_diff, diff_forward as core_diff_forward, integrate as core_integrate,
-    log_exp_rules, match_pattern as core_match_pattern, simplify as core_simplify,
+    load_from, log_exp_rules, match_pattern as core_match_pattern, simplify as core_simplify,
     simplify_egraph as core_simplify_egraph,
     simplify_egraph_with as core_simplify_egraph_with, simplify_with as core_simplify_with,
     trig_rules, AlkahestError as AlkahestErrorTrait, DiffError, EgraphConfig, IntegrationError,
@@ -127,7 +127,7 @@ fn io_error_to_py(e: IoError) -> PyErr {
     })
 }
 
-#[cfg(feature = "groebner")]
+#[cfg(feature = "groebner-cuda")]
 fn gpu_groebner_error_to_py(e: alkahest_core::experimental::GpuGroebnerError) -> PyErr {
     Python::with_gil(|py| {
         let exc_type = py.get_type_bound::<PySolverError>();
@@ -271,6 +271,27 @@ impl PyExprPool {
         let id = slf.inner.pred_false();
         let pool: Py<PyExprPool> = slf.into();
         PyExpr { id, pool }
+    }
+
+    // V1-16: ExprPool persistence bindings
+    /// Write the pool to `path` atomically (temp + rename).  Raises `IoError`
+    /// on any filesystem failure.
+    fn save_to(&self, path: &str) -> PyResult<()> {
+        self.inner.checkpoint(path).map_err(io_error_to_py)
+    }
+
+    /// Load a persisted pool from `path`.  Returns a new `ExprPool`.
+    /// Raises `FileNotFoundError` if `path` does not exist, `IoError` for
+    /// other failures.
+    #[staticmethod]
+    fn load_from(path: &str) -> PyResult<PyExprPool> {
+        match load_from(path) {
+            Ok(Some(inner)) => Ok(PyExprPool { inner }),
+            Ok(None) => Err(pyo3::exceptions::PyFileNotFoundError::new_err(format!(
+                "pool file not found: {path}"
+            ))),
+            Err(e) => Err(io_error_to_py(e)),
+        }
     }
 }
 
@@ -2593,7 +2614,7 @@ fn py_compile_cuda(
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "groebner")]
-use alkahest_core::{GbPoly, GroebnerBasis};
+use alkahest_core::{expr_to_gbpoly, GbPoly, GroebnerBasis, MonomialOrder};
 
 #[cfg(feature = "groebner")]
 #[pyclass(name = "GbPoly")]
@@ -2621,19 +2642,77 @@ impl PyGbPoly {
 #[pyclass(name = "GroebnerBasis")]
 struct PyGroebnerBasis {
     inner: GroebnerBasis,
+    /// Pool used when this basis was computed from expressions (None for bases
+    /// returned by `solve()` which had no variable context stored).
+    pool: Option<Py<PyExprPool>>,
+    /// Variables in the order used for exponent vectors — populated by `compute()`.
+    var_ids: Vec<ExprId>,
 }
 
 #[cfg(feature = "groebner")]
 #[pymethods]
 impl PyGroebnerBasis {
+    /// Compute a Gröbner basis (lex order) for the polynomial system
+    /// `polys = 0` in the given variables.
+    ///
+    /// Parameters
+    /// ----------
+    /// polys : list[Expr]
+    ///     Polynomial expressions, each representing `p(vars) = 0`.
+    /// vars : list[Expr]
+    ///     Symbolic variables (must be ``Symbol``).
+    #[staticmethod]
+    fn compute(
+        py: Python<'_>,
+        polys: Vec<PyRef<PyExpr>>,
+        vars: Vec<PyRef<PyExpr>>,
+    ) -> PyResult<PyGroebnerBasis> {
+        if polys.is_empty() || vars.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "GroebnerBasis.compute requires at least one polynomial and one variable",
+            ));
+        }
+        let pool_py = polys[0].pool.clone_ref(py);
+        let pool = pool_py.borrow(py);
+        let var_ids: Vec<ExprId> = vars.iter().map(|v| v.id).collect();
+        let mut gb_polys = Vec::with_capacity(polys.len());
+        for p in &polys {
+            let gbp = expr_to_gbpoly(p.id, &var_ids, &pool.inner)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+            gb_polys.push(gbp);
+        }
+        drop(pool);
+        let inner = GroebnerBasis::compute(gb_polys, MonomialOrder::Lex);
+        Ok(PyGroebnerBasis { inner, pool: Some(pool_py), var_ids })
+    }
+
     fn reduce(&self, p: PyRef<PyGbPoly>) -> PyGbPoly {
         PyGbPoly {
             inner: self.inner.reduce(&p.inner),
         }
     }
 
-    fn contains(&self, p: PyRef<PyGbPoly>) -> bool {
-        self.inner.contains(&p.inner)
+    /// Test membership.  Accepts either a ``GbPoly`` or an ``Expr``; when
+    /// passing an ``Expr`` the basis must have been created via ``compute()``
+    /// so that the variable order is known.
+    fn contains(&self, py: Python<'_>, p: &Bound<'_, PyAny>) -> PyResult<bool> {
+        if let Ok(gbp) = p.downcast::<PyGbPoly>() {
+            return Ok(self.inner.contains(&gbp.borrow().inner));
+        }
+        if let Ok(expr) = p.downcast::<PyExpr>() {
+            let pool_py = self.pool.as_ref().ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(
+                    "GroebnerBasis has no variable context; use GroebnerBasis.compute() to build one that accepts Expr",
+                )
+            })?;
+            let pool = pool_py.borrow(py);
+            let gbp = expr_to_gbpoly(expr.borrow().id, &self.var_ids, &pool.inner)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+            return Ok(self.inner.contains(&gbp));
+        }
+        Err(pyo3::exceptions::PyTypeError::new_err(
+            "contains() expects a GbPoly or an Expr",
+        ))
     }
 
     fn __len__(&self) -> usize {
@@ -2652,7 +2731,7 @@ impl PyGroebnerBasis {
 #[cfg(feature = "groebner")]
 use alkahest_core::{solve_polynomial_system, SolutionSet};
 
-/// `alkahest.solve(equations, vars) -> list[dict] | None`
+/// `alkahest.solve(equations, vars, *, numeric=False) -> list[dict] | GroebnerBasis | list`
 ///
 /// Solve a zero-dimensional polynomial system.
 ///
@@ -2662,24 +2741,26 @@ use alkahest_core::{solve_polynomial_system, SolutionSet};
 ///     Each expression represents `p(vars) = 0`.
 /// vars : list[Expr]
 ///     The symbolic variables to solve for (must be symbols).
+/// numeric : bool, default False
+///     When ``False`` (default), each solution dict maps ``Expr → Expr``
+///     (symbolic).  When ``True``, values are cast to ``float`` (legacy
+///     behaviour; useful for quick numerical checks).
 ///
 /// Returns
 /// -------
 /// list[dict]
-///     Each dict maps a variable `Expr` to a rational solution value (as a
-///     Python float).  Returns an empty list if no solution exists.
+///     Each dict maps a variable ``Expr`` to a solution value.
+///     Returns an empty list when no solution exists.
 /// GroebnerBasis
-///     When the system has infinitely many solutions (parametric ideal), the
-///     Gröbner basis object is returned instead.
-/// None
-///     No real rational solution found (irrational or complex roots).
+///     When the system has infinitely many solutions (parametric ideal).
 #[cfg(feature = "groebner")]
 #[pyfunction]
-#[pyo3(name = "solve")]
+#[pyo3(name = "solve", signature = (equations, vars, numeric = false))]
 fn py_solve(
     py: Python<'_>,
     equations: Vec<PyRef<PyExpr>>,
     vars: Vec<PyRef<PyExpr>>,
+    numeric: bool,
 ) -> PyResult<PyObject> {
     if equations.is_empty() || vars.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err(
@@ -2701,7 +2782,12 @@ fn py_solve(
             Err(make_structured_err(py2, &exc_type, &e))
         }),
         Ok(SolutionSet::NoSolution) => Ok(pyo3::types::PyList::empty_bound(py).into()),
-        Ok(SolutionSet::Parametric(gb)) => Ok(PyGroebnerBasis { inner: gb }.into_py(py)),
+        Ok(SolutionSet::Parametric(gb)) => Ok(PyGroebnerBasis {
+            inner: gb,
+            pool: None,
+            var_ids: vec![],
+        }
+        .into_py(py)),
         Ok(SolutionSet::Finite(solutions)) => {
             let list = pyo3::types::PyList::empty_bound(py);
             let pool = pool_py.borrow(py);
@@ -2712,15 +2798,21 @@ fn py_solve(
                         id: var_ids[i],
                         pool: pool_py.clone_ref(py),
                     };
-                    // Each solution value is a symbolic ExprId tree (may involve
-                    // `sqrt` for quadratic roots).  Reduce to a float for Python
-                    // consumers — callers that need the symbolic form can use
-                    // the Rust API directly.
-                    let env: std::collections::HashMap<ExprId, f64> =
-                        std::collections::HashMap::new();
-                    let f = alkahest_core::jit::eval_interp(*val, &env, &pool.inner)
-                        .unwrap_or(f64::NAN);
-                    d.set_item(var_expr.into_py(py), f)?;
+                    if numeric {
+                        // Legacy numeric path: cast solution ExprId to f64.
+                        let env: std::collections::HashMap<ExprId, f64> =
+                            std::collections::HashMap::new();
+                        let f = alkahest_core::jit::eval_interp(*val, &env, &pool.inner)
+                            .unwrap_or(f64::NAN);
+                        d.set_item(var_expr.into_py(py), f)?;
+                    } else {
+                        // Symbolic path: wrap the solution ExprId as a PyExpr.
+                        let val_expr = PyExpr {
+                            id: *val,
+                            pool: pool_py.clone_ref(py),
+                        };
+                        d.set_item(var_expr.into_py(py), val_expr.into_py(py))?;
+                    }
                 }
                 list.append(d)?;
             }
@@ -2829,7 +2921,7 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyCudaCompiledFn>()?;
         m.add_function(wrap_pyfunction!(py_compile_cuda, m)?)?;
     }
-    // V5-11 — Gröbner basis
+    // V5-11 — Gröbner basis / V1-16 — GroebnerBasis.compute
     #[cfg(feature = "groebner")]
     {
         m.add_class::<PyGbPoly>()?;

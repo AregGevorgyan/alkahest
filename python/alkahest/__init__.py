@@ -130,9 +130,15 @@ try:
 except ImportError:
     pass
 
-# V1-4: Polynomial system solver (optional — requires groebner feature at build time)
+# V1-4 / V1-16: Polynomial system solver + Gröbner basis (optional — requires groebner feature)
 try:
-    from .alkahest import solve  # noqa: F401
+    from .alkahest import solve, GroebnerBasis, GbPoly  # noqa: F401
+except ImportError:
+    pass
+
+# V1-16: IoError (always present in the native module)
+try:
+    from .alkahest import IoError  # noqa: F401
 except ImportError:
     pass
 # Import exception classes from the native module (V1-3).
@@ -348,8 +354,12 @@ __all__ = [
     "piecewise",
     # V5-2
     "to_stablehlo",
-    # V1-4: Polynomial system solver (requires groebner feature)
+    # V1-4 / V1-16: Polynomial system solver + Gröbner basis (requires groebner feature)
     "solve",
+    "GroebnerBasis",
+    "GbPoly",
+    # V1-16: IoError
+    "IoError",
     # RW-7
     "context",
     "symbol",

@@ -32,7 +32,7 @@ Items deferred from v1.0 due to algorithmic complexity or hardware availability,
 | **V1-10** Windows + macOS CI parity | 🏗 Scaffolded | Full platform matrix pending FLINT/LLVM discovery fixes |
 | **V1-11** Documentation site (Sphinx + mdBook) | 🏗 Scaffolded | Content written; CI build (`docs.yml`) pending deployment |
 | **V1-15** E-graph default rule completeness | ✅ Complete | Trig (sin²+cos²→1, Pow form) and log/exp (exp(log)→x) load by default; `EgraphConfig.include_trig_rules/include_log_exp_rules` opt-out flags; `simplify_egraph_with` Python API |
-| **V1-16** Python API completeness | 📋 Planned | `ExprPool` persistence bindings, `GroebnerBasis.compute()`, symbolic `solve()` output |
+| **V1-16** Python API completeness | ✅ Complete | `ExprPool.save_to/load_from`, `GroebnerBasis.compute()`, `solve()` returns `Expr` by default (`numeric=True` for floats) |
 | **V2-20** LaTeX / Unicode pretty-printing | 📋 Planned | Pure-Python tree walk; unblocks notebook demos and docs site |
 | **V2-21** String / expression parsing (`parse(str)`) | 📋 Planned | Pratt recursive-descent parser; complements the PyPI release |
 
@@ -123,22 +123,17 @@ cover algebraic extensions — integrals of expressions involving
 
 ---
 
-### V1-16. Python API completeness
+### V1-16. Python API completeness ✅
 
 Three gaps found in the post-launch API audit — all involve exposing already-shipped Rust functionality to Python.
 
-1. **`ExprPool` persistence** — `ExprPool.save_to(path)` and `ExprPool.load_from(path)` (V1-14 shipped in Rust; the PyO3 layer was not updated).
-2. **`GroebnerBasis.compute(polys, vars)`** — `GroebnerBasis::compute` exists in Rust (V5-11) but `#[pyo3]` binding was never added.
-3. **Symbolic `solve()` output** — `solve()` returns `dict[Expr, float]`; irrational roots like `√2/2` are cast to float at the boundary. Change to return `dict[Expr, Expr]` with an optional `numeric=True` flag.
+1. **`ExprPool` persistence** — `ExprPool.save_to(path)` and `ExprPool.load_from(path)` added to PyO3 bindings. `IoError` exported from `alkahest`.
+2. **`GroebnerBasis.compute(polys, vars)`** — `#[staticmethod]` PyO3 binding added; `GroebnerBasis` and `GbPoly` exported from `alkahest`.
+3. **Symbolic `solve()` output** — `solve()` now returns `dict[Expr, Expr]` by default; `solve(..., numeric=True)` retains the legacy float output.
 
-**Design:** All three in `alkahest-py/src/lib.rs`.
+**Implementation:** All three in `alkahest-py/src/lib.rs`; exports added to `python/alkahest/__init__.py`.
 
-**Test plan:**
-1. `pool.save_to("/tmp/p.alkp"); pool2 = ExprPool.load_from("/tmp/p.alkp")` — round-trips a 100-expression pool.
-2. `gb = GroebnerBasis.compute([x**2 - 1], [x]); gb.contains(x - 1)` → `True`.
-3. `solve([x**2 - 2], [x])` returns `[{x: sqrt(2)}, {x: -sqrt(2)}]` as `Expr`; `numeric=True` returns floats.
-
-**Acceptance:** All three APIs in `alkahest.__all__`; existing `tests/test_v10.py` solver tests pass with the symbolic-output form.
+**Tests:** `tests/test_v16.py` (15 tests) and updated `tests/test_v10.py` (symbolic + numeric solver tests). Full suite: 468 passed, 51 skipped.
 
 ---
 

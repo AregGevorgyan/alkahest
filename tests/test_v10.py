@@ -167,40 +167,117 @@ class TestStructuredErrors:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    not hasattr(alkahest, "solve"),
+_has_groebner = hasattr(alkahest, "solve")
+_skip_no_groebner = pytest.mark.skipif(
+    not _has_groebner,
     reason="alkahest.solve requires groebner feature at build time",
 )
+
+
+@_skip_no_groebner
 class TestPolynomialSolver:
     def setup_method(self):
         self.pool = alkahest.ExprPool()
         self.x = self.pool.symbol("x")
         self.y = self.pool.symbol("y")
 
-    def test_linear_system(self):
-        """x + y - 1 = 0, x - y = 0  →  x = y = 0.5."""
+    # --- numeric=True path (legacy float output) ----------------------------
+
+    def test_linear_system_numeric(self):
+        """x + y - 1 = 0, x - y = 0  →  x = y = 0.5 (float)."""
         p = self.pool
         x, y = self.x, self.y
         one = p.integer(1)
         eq1 = x + y + p.integer(-1) * one  # x + y - 1
         eq2 = x + p.integer(-1) * y        # x - y
-        solutions = alkahest.solve([eq1, eq2], [x, y])
+        solutions = alkahest.solve([eq1, eq2], [x, y], numeric=True)
         assert isinstance(solutions, list), "expected list of solutions"
         assert len(solutions) > 0, "expected at least one solution"
         sol = solutions[0]
         assert abs(sol[x] - 0.5) < 1e-10
         assert abs(sol[y] - 0.5) < 1e-10
 
-    def test_univariate_quadratic(self):
-        """x^2 - 4 = 0  →  x = ±2."""
+    def test_univariate_quadratic_numeric(self):
+        """x^2 - 4 = 0  →  x = ±2 (float)."""
+        p = self.pool
+        x = self.x
+        expr = x**2 + p.integer(-4)
+        solutions = alkahest.solve([expr], [x], numeric=True)
+        assert isinstance(solutions, list)
+        roots = [sol[x] for sol in solutions]
+        assert any(abs(r - 2.0) < 1e-10 for r in roots), f"x=2 not in {roots}"
+        assert any(abs(r + 2.0) < 1e-10 for r in roots), f"x=-2 not in {roots}"
+
+    # --- default symbolic output (V1-16) ------------------------------------
+
+    def test_linear_system_symbolic(self):
+        """x + y - 1 = 0, x - y = 0  →  solution values are Expr."""
+        p = self.pool
+        x, y = self.x, self.y
+        one = p.integer(1)
+        eq1 = x + y + p.integer(-1) * one
+        eq2 = x + p.integer(-1) * y
+        solutions = alkahest.solve([eq1, eq2], [x, y])
+        assert isinstance(solutions, list)
+        assert len(solutions) > 0
+        sol = solutions[0]
+        assert isinstance(sol[x], alkahest.Expr), "symbolic value should be Expr"
+        assert isinstance(sol[y], alkahest.Expr), "symbolic value should be Expr"
+        # Numeric agreement — evaluate the symbolic solution directly.
+        assert abs(alkahest.eval_expr(sol[x], {}) - 0.5) < 1e-10
+        assert abs(alkahest.eval_expr(sol[y], {}) - 0.5) < 1e-10
+
+    def test_univariate_quadratic_symbolic(self):
+        """x^2 - 4 = 0  →  solution values are Expr; numerically ±2."""
         p = self.pool
         x = self.x
         expr = x**2 + p.integer(-4)
         solutions = alkahest.solve([expr], [x])
         assert isinstance(solutions, list)
-        roots = [sol[x] for sol in solutions]
-        assert any(abs(r - 2.0) < 1e-10 for r in roots), f"x=2 not in {roots}"
-        assert any(abs(r + 2.0) < 1e-10 for r in roots), f"x=-2 not in {roots}"
+        for sol in solutions:
+            assert isinstance(sol[x], alkahest.Expr)
+        roots_str = {str(sol[x]) for sol in solutions}
+        # Integer solutions: displayed as "2" and "-2".
+        assert "2" in roots_str or any(
+            abs(alkahest.eval_expr(sol[x], {}) - 2.0) < 1e-10
+            for sol in solutions
+        )
+
+
+@_skip_no_groebner
+class TestGroebnerBasisCompute:
+    """V1-16: GroebnerBasis.compute() Python binding."""
+
+    def setup_method(self):
+        self.pool = alkahest.ExprPool()
+        self.x = self.pool.symbol("x")
+        self.y = self.pool.symbol("y")
+
+    def test_compute_returns_groebner_basis(self):
+        x = self.x
+        p = self.pool
+        gb = alkahest.GroebnerBasis.compute([x**2 + p.integer(-1)], [x])
+        assert isinstance(gb, alkahest.GroebnerBasis)
+
+    def test_contains_generator(self):
+        """GB of x^2 - 1 contains x^2 - 1 (ideal membership of the generator)."""
+        x = self.x
+        p = self.pool
+        poly = x**2 + p.integer(-1)  # x^2 - 1
+        gb = alkahest.GroebnerBasis.compute([poly], [x])
+        assert gb.contains(poly)
+
+    def test_len_nonzero(self):
+        x = self.x
+        p = self.pool
+        gb = alkahest.GroebnerBasis.compute([x**2 + p.integer(-4)], [x])
+        assert len(gb) >= 1
+
+    def test_repr(self):
+        x = self.x
+        p = self.pool
+        gb = alkahest.GroebnerBasis.compute([x + p.integer(-1)], [x])
+        assert "GroebnerBasis" in repr(gb)
 
 
 # ---------------------------------------------------------------------------

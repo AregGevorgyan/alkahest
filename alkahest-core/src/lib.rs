@@ -31,7 +31,8 @@ pub use hybrid::{Event, GuardStructure, HybridODE};
 pub use integrate::{integrate, IntegrationError};
 #[allow(deprecated)]
 pub use kernel::{
-    subs, Domain, ExprData, ExprDisplay, ExprId, ExprPool, IoError, PoolPersistError,
+    load_from, open_persistent, save_to, subs, Domain, ExprData, ExprDisplay, ExprId, ExprPool,
+    IoError, PoolPersistError,
 };
 pub use matrix::{jacobian, Matrix, MatrixError};
 pub use ode::{
@@ -76,7 +77,7 @@ pub use errors::AlkahestError;
 pub use lean::emit_lean_expr as emit_lean;
 pub use primitive::{Capabilities, CoverageReport, CoverageRow, Primitive, PrimitiveRegistry};
 #[cfg(feature = "groebner")]
-pub use solver::{solve_polynomial_system, Solution, SolutionSet, SolverError};
+pub use solver::{expr_to_gbpoly, solve_polynomial_system, Solution, SolutionSet, SolverError};
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -135,5 +136,7 @@ pub mod experimental {
     pub use crate::simplify::parallel::{simplify_par, simplify_par_with_config};
 
     #[cfg(feature = "groebner")]
-    pub use crate::poly::groebner::{GbPoly, GpuGroebnerError, GroebnerBasis, MonomialOrder};
+    pub use crate::poly::groebner::{GbPoly, GroebnerBasis, MonomialOrder};
+    #[cfg(feature = "groebner-cuda")]
+    pub use crate::poly::groebner::GpuGroebnerError;
 }
