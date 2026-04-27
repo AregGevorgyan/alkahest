@@ -10,6 +10,7 @@ name = "alkahest"
 crate-type = ["cdylib"]
 
 [features]
+egraph = ["alkahest-core/egraph"]
 numpy = ["dep:numpy"]
 parallel = ["alkahest-core/parallel"]
 groebner = ["alkahest-core/groebner"]

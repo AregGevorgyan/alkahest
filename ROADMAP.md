@@ -31,7 +31,7 @@ Items deferred from v1.0 due to algorithmic complexity or hardware availability,
 | **V1-9** PyPI wheels (manylinux / macOS / Windows) | 🏗 Scaffolded | Publish gate lifts after two weeks of green v1.0 main |
 | **V1-10** Windows + macOS CI parity | 🏗 Scaffolded | Full platform matrix pending FLINT/LLVM discovery fixes |
 | **V1-11** Documentation site (Sphinx + mdBook) | 🏗 Scaffolded | Content written; CI build (`docs.yml`) pending deployment |
-| **V1-15** E-graph default rule completeness | 📋 Planned | Load trig + log/exp rules in `simplify_egraph` by default |
+| **V1-15** E-graph default rule completeness | ✅ Complete | Trig (sin²+cos²→1, Pow form) and log/exp (exp(log)→x) load by default; `EgraphConfig.include_trig_rules/include_log_exp_rules` opt-out flags; `simplify_egraph_with` Python API |
 | **V1-16** Python API completeness | 📋 Planned | `ExprPool` persistence bindings, `GroebnerBasis.compute()`, symbolic `solve()` output |
 | **V2-20** LaTeX / Unicode pretty-printing | 📋 Planned | Pure-Python tree walk; unblocks notebook demos and docs site |
 | **V2-21** String / expression parsing (`parse(str)`) | 📋 Planned | Pratt recursive-descent parser; complements the PyPI release |

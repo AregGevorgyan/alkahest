@@ -114,6 +114,25 @@ mod backend {
         let ei = config.explore_iters;
         let ci = config.const_fold_iters;
 
+        // Conditionally include trig / log-exp rules based on config flags.
+        let trig_rules = if config.include_trig_rules {
+            // Both Mul form (sin(x)*sin(x)) and Pow form (sin(x)^2) are matched
+            // so the identity fires regardless of how the square is represented.
+            "(rewrite (Add (Mul (Sin ?x) (Sin ?x)) (Mul (Cos ?x) (Cos ?x))) (Num 1) :ruleset explore)\n\
+             (rewrite (Add (Mul (Cos ?x) (Cos ?x)) (Mul (Sin ?x) (Sin ?x))) (Num 1) :ruleset explore)\n\
+             (rewrite (Add (Pow (Sin ?x) (Num 2)) (Pow (Cos ?x) (Num 2))) (Num 1) :ruleset explore)\n\
+             (rewrite (Add (Pow (Cos ?x) (Num 2)) (Pow (Sin ?x) (Num 2))) (Num 1) :ruleset explore)"
+        } else {
+            ""
+        };
+
+        let log_exp_rules = if config.include_log_exp_rules {
+            "(rewrite (Exp (Log ?x)) ?x :ruleset explore)\n\
+             (rewrite (Log (Exp ?x)) ?x :ruleset explore)"
+        } else {
+            ""
+        };
+
         format!(
             r#"
 {node_limit_line}{iter_limit_line}(datatype Expr
@@ -143,12 +162,10 @@ mod backend {
 (rewrite (Mul ?x (Pow ?x (Num -1))) (Num 1) :ruleset shrink)
 (rewrite (Mul (Pow ?x (Num -1)) ?x) (Num 1) :ruleset shrink)
 
-; ── explore ruleset: trig and log/exp identities ──────────────────────────────
+; ── explore ruleset: trig and log/exp identities (default: both enabled) ──────
 (ruleset explore)
-(rewrite (Add (Mul (Sin ?x) (Sin ?x)) (Mul (Cos ?x) (Cos ?x))) (Num 1) :ruleset explore)
-(rewrite (Add (Mul (Cos ?x) (Cos ?x)) (Mul (Sin ?x) (Sin ?x))) (Num 1) :ruleset explore)
-(rewrite (Exp (Log ?x)) ?x :ruleset explore)
-(rewrite (Log (Exp ?x)) ?x :ruleset explore)
+{trig_rules}
+{log_exp_rules}
 (rewrite (Mul (Num -1) (Mul (Num -1) ?x)) ?x :ruleset explore)
 
 ; ── constant folding ──────────────────────────────────────────────────────────
@@ -174,6 +191,8 @@ mod backend {
 "#,
             node_limit_line = node_limit_line,
             iter_limit_line = iter_limit_line,
+            trig_rules = trig_rules,
+            log_exp_rules = log_exp_rules,
             expr = expr_str,
             si = si,
             ei = ei,
@@ -515,6 +534,14 @@ impl EgraphCost for StabilityCost {
 ///
 /// Pass to [`simplify_egraph_with`] to customise iteration counts and
 /// resource limits.
+///
+/// # Rule flags
+///
+/// By default both `include_trig_rules` and `include_log_exp_rules` are `true`,
+/// so `simplify_egraph` reduces `sin²(x)+cos²(x)→1` and `exp(log(x))→x`
+/// without any extra configuration.  Set either flag to `false` to suppress
+/// the corresponding rule set (useful when you need to benchmark rule impact or
+/// avoid domain-sensitive rewrites).
 #[derive(Debug, Clone)]
 pub struct EgraphConfig {
     /// Saturation iterations in the *shrinking* phase. Default 5.
@@ -527,6 +554,12 @@ pub struct EgraphConfig {
     pub node_limit: Option<usize>,
     /// Per-ruleset iteration cap passed to egglog's scheduler. `None` = unlimited.
     pub iter_limit: Option<usize>,
+    /// Include the Pythagorean trig identity (`sin²+cos²→1`) in the explore phase.
+    /// Default `true`.
+    pub include_trig_rules: bool,
+    /// Include exp/log cancellation (`exp(log(x))→x`, `log(exp(x))→x`) in the
+    /// explore phase. Default `true`.
+    pub include_log_exp_rules: bool,
 }
 
 impl Default for EgraphConfig {
@@ -537,6 +570,8 @@ impl Default for EgraphConfig {
             const_fold_iters: 3,
             node_limit: None,
             iter_limit: None,
+            include_trig_rules: true,
+            include_log_exp_rules: true,
         }
     }
 }
@@ -702,5 +737,71 @@ mod tests {
         let penalised = sc.cost("Add", &[2.0, 2.0]);
         let normal = sc.cost("Add", &[0.1, 2.0]);
         assert!(penalised > normal);
+    }
+
+    // V1-15: trig identity via Pow form (sin(x)^2 + cos(x)^2 → 1)
+    #[test]
+    fn egraph_trig_identity_pow_form() {
+        let pool = ExprPool::new();
+        let x = pool.symbol("x", Domain::Real);
+        let sin_x = pool.func("sin", vec![x]);
+        let cos_x = pool.func("cos", vec![x]);
+        let sin2 = pool.pow(sin_x, pool.integer(2_i32));
+        let cos2 = pool.pow(cos_x, pool.integer(2_i32));
+        let expr = pool.add(vec![sin2, cos2]);
+        let result = simplify_egraph(expr, &pool);
+        assert_eq!(result.value, pool.integer(1_i32));
+    }
+
+    // V1-15: exp(log(x)) → x
+    #[test]
+    fn egraph_exp_of_log() {
+        let pool = ExprPool::new();
+        let x = pool.symbol("x", Domain::Real);
+        let expr = pool.func("exp", vec![pool.func("log", vec![x])]);
+        let result = simplify_egraph(expr, &pool);
+        assert_eq!(result.value, x);
+    }
+
+    // V1-15: log(exp(x)) → x
+    #[test]
+    fn egraph_log_of_exp() {
+        let pool = ExprPool::new();
+        let x = pool.symbol("x", Domain::Real);
+        let expr = pool.func("log", vec![pool.func("exp", vec![x])]);
+        let result = simplify_egraph(expr, &pool);
+        assert_eq!(result.value, x);
+    }
+
+    // V1-15: opt-out trig rules via config
+    #[test]
+    fn egraph_opt_out_trig_rules() {
+        let pool = ExprPool::new();
+        let x = pool.symbol("x", Domain::Real);
+        let sin_x = pool.func("sin", vec![x]);
+        let cos_x = pool.func("cos", vec![x]);
+        let sin2 = pool.pow(sin_x, pool.integer(2_i32));
+        let cos2 = pool.pow(cos_x, pool.integer(2_i32));
+        let expr = pool.add(vec![sin2, cos2]);
+        let config = EgraphConfig {
+            include_trig_rules: false,
+            ..EgraphConfig::default()
+        };
+        let result = simplify_egraph_with(expr, &pool, &config, &SizeCost);
+        assert_ne!(result.value, pool.integer(1_i32));
+    }
+
+    // V1-15: opt-out log/exp rules via config
+    #[test]
+    fn egraph_opt_out_log_exp_rules() {
+        let pool = ExprPool::new();
+        let x = pool.symbol("x", Domain::Real);
+        let expr = pool.func("exp", vec![pool.func("log", vec![x])]);
+        let config = EgraphConfig {
+            include_log_exp_rules: false,
+            ..EgraphConfig::default()
+        };
+        let result = simplify_egraph_with(expr, &pool, &config, &SizeCost);
+        assert_ne!(result.value, x);
     }
 }

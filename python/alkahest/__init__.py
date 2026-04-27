@@ -97,7 +97,11 @@ from .alkahest import (  # noqa: F401
     sensitivity_system,
     sign,
     simplify,
+    # V1-15: EgraphConfig and simplify_egraph_with
+    EgraphConfig,
+    HAS_EGRAPH,
     simplify_egraph,
+    simplify_egraph_with,
     simplify_expanded,
     simplify_log_exp,
     # Phase 23: Parallel simplification
@@ -250,6 +254,9 @@ __all__ = [
     # Simplification
     "simplify",
     "simplify_egraph",
+    "simplify_egraph_with",
+    "EgraphConfig",
+    "HAS_EGRAPH",
     "simplify_expanded",
     "simplify_trig",
     "simplify_log_exp",

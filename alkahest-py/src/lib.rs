@@ -46,9 +46,10 @@ use alkahest_core::compile_cuda as core_compile_cuda;
 use alkahest_core::{
     diff as core_diff, diff_forward as core_diff_forward, integrate as core_integrate,
     log_exp_rules, match_pattern as core_match_pattern, simplify as core_simplify,
-    simplify_egraph as core_simplify_egraph, simplify_with as core_simplify_with, trig_rules,
-    AlkahestError as AlkahestErrorTrait, DiffError, IntegrationError, IoError, PatternRule,
-    SimplifyConfig,
+    simplify_egraph as core_simplify_egraph,
+    simplify_egraph_with as core_simplify_egraph_with, simplify_with as core_simplify_with,
+    trig_rules, AlkahestError as AlkahestErrorTrait, DiffError, EgraphConfig, IntegrationError,
+    IoError, PatternRule, SimplifyConfig, SizeCost,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -713,12 +714,96 @@ fn py_simplify(py: Python<'_>, expr: PyRef<PyExpr>) -> PyDerivedResult {
     make_derived_result(py, derived, pool_py)
 }
 
+/// Python-visible configuration for the e-graph simplifier.
+///
+/// All arguments are keyword-only with the same defaults as the Rust `EgraphConfig`.
+#[pyclass(name = "EgraphConfig")]
+#[derive(Clone)]
+struct PyEgraphConfig {
+    inner: EgraphConfig,
+}
+
+#[pymethods]
+impl PyEgraphConfig {
+    #[new]
+    #[pyo3(signature = (
+        shrink_iters = 5,
+        explore_iters = 3,
+        const_fold_iters = 3,
+        node_limit = None,
+        iter_limit = None,
+        include_trig_rules = true,
+        include_log_exp_rules = true,
+    ))]
+    fn new(
+        shrink_iters: usize,
+        explore_iters: usize,
+        const_fold_iters: usize,
+        node_limit: Option<usize>,
+        iter_limit: Option<usize>,
+        include_trig_rules: bool,
+        include_log_exp_rules: bool,
+    ) -> Self {
+        PyEgraphConfig {
+            inner: EgraphConfig {
+                shrink_iters,
+                explore_iters,
+                const_fold_iters,
+                node_limit,
+                iter_limit,
+                include_trig_rules,
+                include_log_exp_rules,
+            },
+        }
+    }
+
+    #[getter]
+    fn shrink_iters(&self) -> usize { self.inner.shrink_iters }
+
+    #[getter]
+    fn explore_iters(&self) -> usize { self.inner.explore_iters }
+
+    #[getter]
+    fn const_fold_iters(&self) -> usize { self.inner.const_fold_iters }
+
+    #[getter]
+    fn node_limit(&self) -> Option<usize> { self.inner.node_limit }
+
+    #[getter]
+    fn iter_limit(&self) -> Option<usize> { self.inner.iter_limit }
+
+    #[getter]
+    fn include_trig_rules(&self) -> bool { self.inner.include_trig_rules }
+
+    #[getter]
+    fn include_log_exp_rules(&self) -> bool { self.inner.include_log_exp_rules }
+}
+
 #[pyfunction]
 #[pyo3(name = "simplify_egraph")]
 fn py_simplify_egraph(py: Python<'_>, expr: PyRef<PyExpr>) -> PyDerivedResult {
     let derived = {
         let pool = expr.pool.borrow(py);
         core_simplify_egraph(expr.id, &pool.inner)
+    };
+    let pool_py = expr.pool.clone_ref(py);
+    make_derived_result(py, derived, pool_py)
+}
+
+/// Simplify using the e-graph backend with a custom [`EgraphConfig`].
+///
+/// Use this when you want to disable specific rule sets (e.g. trig or log/exp
+/// rules) or tune the phase iteration counts.
+#[pyfunction]
+#[pyo3(name = "simplify_egraph_with")]
+fn py_simplify_egraph_with(
+    py: Python<'_>,
+    expr: PyRef<PyExpr>,
+    config: PyRef<PyEgraphConfig>,
+) -> PyDerivedResult {
+    let derived = {
+        let pool = expr.pool.borrow(py);
+        core_simplify_egraph_with(expr.id, &pool.inner, &config.inner, &SizeCost)
     };
     let pool_py = expr.pool.clone_ref(py);
     make_derived_result(py, derived, pool_py)
@@ -2649,6 +2734,8 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(py_simplify, m)?)?;
     m.add_function(wrap_pyfunction!(py_simplify_egraph, m)?)?;
+    m.add_function(wrap_pyfunction!(py_simplify_egraph_with, m)?)?;
+    m.add_class::<PyEgraphConfig>()?;
     m.add_function(wrap_pyfunction!(py_simplify_with, m)?)?;
     m.add_function(wrap_pyfunction!(py_simplify_expanded, m)?)?;
     m.add_function(wrap_pyfunction!(py_simplify_trig, m)?)?;
@@ -2770,5 +2857,7 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("CudaError", m.py().get_type_bound::<PyCudaError>())?;
     m.add("IoError", m.py().get_type_bound::<PyIoError>())?;
     m.add("ParseError", m.py().get_type_bound::<PyParseError>())?;
+    // V1-15: compile-time flag so Python tests can skip egraph-dependent assertions.
+    m.add("HAS_EGRAPH", cfg!(feature = "egraph"))?;
     Ok(())
 }
