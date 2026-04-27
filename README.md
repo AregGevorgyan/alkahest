@@ -127,6 +127,7 @@ alkahest/
 ├── benchmarks/            # Python benchmarks and competitor comparisons
 ├── fuzz/                  # AFL++ fuzz targets
 ├── docs/                  # mdBook and Sphinx documentation
+├── alkahest-skill/        # Skill for AI to use alkahest
 └── scripts/               # CI helpers (API freeze check, error codes)
 ```
 
