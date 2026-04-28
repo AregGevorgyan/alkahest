@@ -51,8 +51,9 @@ use alkahest_core::{
     trig_rules, AlkahestError as AlkahestErrorTrait, DiffError, EgraphConfig, IntegrationError,
     IoError, PatternRule, SimplifyConfig, SizeCost,
 };
+use alkahest_core::kernel::expr::PredicateKind;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyDict, PyList, PyTuple};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -481,6 +482,116 @@ impl PyExpr {
         PyExpr {
             id,
             pool: self.pool.clone_ref(py),
+        }
+    }
+
+    fn node_tag(&self, py: Python<'_>) -> String {
+        let data = self.pool.borrow(py).inner.get(self.id);
+        match data {
+            alkahest_core::ExprData::Symbol { .. } => "symbol".to_string(),
+            alkahest_core::ExprData::Integer(_) => "integer".to_string(),
+            _ => "other".to_string(),
+        }
+    }
+
+    // V2-20: expose expression tree structure for pure-Python pretty-printing.
+    //
+    // Returns a Python list [tag, arg...] describing this node:
+    //   ["symbol",    name: str]
+    //   ["integer",   value: str]
+    //   ["rational",  numer: str, denom: str]
+    //   ["float",     value: str]
+    //   ["add",       [child: Expr, ...]]
+    //   ["mul",       [child: Expr, ...]]
+    //   ["pow",       base: Expr, exp: Expr]
+    //   ["func",      name: str, [arg: Expr, ...]]
+    //   ["piecewise", [[cond: Expr, val: Expr], ...], default: Expr]
+    //   ["predicate", kind: str, [arg: Expr, ...]]
+    fn node(&self, py: Python<'_>) -> PyObject {
+        let data = {
+            let pool = self.pool.borrow(py);
+            pool.inner.get(self.id)
+        };
+
+        macro_rules! wrap {
+            ($id:expr) => {
+                PyExpr { id: $id, pool: self.pool.clone_ref(py) }.into_py(py)
+            };
+        }
+
+        macro_rules! ids_to_pylist {
+            ($ids:expr) => {{
+                let items: Vec<PyObject> = $ids.iter().map(|&id| wrap!(id)).collect();
+                PyList::new_bound(py, items).into_py(py)
+            }};
+        }
+
+        match data {
+            alkahest_core::ExprData::Symbol { name, .. } => {
+                PyList::new_bound(py, vec!["symbol".into_py(py), name.into_py(py)]).into_py(py)
+            }
+            alkahest_core::ExprData::Integer(n) => {
+                PyList::new_bound(py, vec!["integer".into_py(py), n.0.to_string().into_py(py)]).into_py(py)
+            }
+            alkahest_core::ExprData::Rational(r) => {
+                PyList::new_bound(py, vec![
+                    "rational".into_py(py),
+                    r.0.numer().to_string().into_py(py),
+                    r.0.denom().to_string().into_py(py),
+                ]).into_py(py)
+            }
+            alkahest_core::ExprData::Float(f) => {
+                PyList::new_bound(py, vec!["float".into_py(py), f.inner.to_string().into_py(py)]).into_py(py)
+            }
+            alkahest_core::ExprData::Add(args) => {
+                PyList::new_bound(py, vec!["add".into_py(py), ids_to_pylist!(args)]).into_py(py)
+            }
+            alkahest_core::ExprData::Mul(args) => {
+                PyList::new_bound(py, vec!["mul".into_py(py), ids_to_pylist!(args)]).into_py(py)
+            }
+            alkahest_core::ExprData::Pow { base, exp } => {
+                PyList::new_bound(py, vec!["pow".into_py(py), wrap!(base), wrap!(exp)]).into_py(py)
+            }
+            alkahest_core::ExprData::Func { name, args } => {
+                PyList::new_bound(py, vec![
+                    "func".into_py(py),
+                    name.into_py(py),
+                    ids_to_pylist!(args),
+                ]).into_py(py)
+            }
+            alkahest_core::ExprData::Piecewise { branches, default } => {
+                let br_items: Vec<PyObject> = branches
+                    .iter()
+                    .map(|&(cond, val)| {
+                        PyTuple::new_bound(py, vec![wrap!(cond), wrap!(val)]).into_py(py)
+                    })
+                    .collect();
+                PyList::new_bound(py, vec![
+                    "piecewise".into_py(py),
+                    PyList::new_bound(py, br_items).into_py(py),
+                    wrap!(default),
+                ]).into_py(py)
+            }
+            alkahest_core::ExprData::Predicate { kind, args } => {
+                let kind_str = match kind {
+                    PredicateKind::Lt => "lt",
+                    PredicateKind::Le => "le",
+                    PredicateKind::Gt => "gt",
+                    PredicateKind::Ge => "ge",
+                    PredicateKind::Eq => "eq",
+                    PredicateKind::Ne => "ne",
+                    PredicateKind::And => "and",
+                    PredicateKind::Or => "or",
+                    PredicateKind::Not => "not",
+                    PredicateKind::True => "true",
+                    PredicateKind::False => "false",
+                };
+                PyList::new_bound(py, vec![
+                    "predicate".into_py(py),
+                    kind_str.into_py(py),
+                    ids_to_pylist!(args),
+                ]).into_py(py)
+            }
         }
     }
 }

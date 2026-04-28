@@ -282,10 +282,11 @@ class TestIntegration:
         r = integrate(x_inv, self.x)
         assert str(r.value) == "log(x)"
 
-    def test_integrate_not_implemented(self):
+    def test_integrate_sqrt_is_implemented(self):
+        # V1-2: algebraic-function Risch now handles sqrt(P(x)) for genus-0 curves.
         from alkahest.alkahest import sqrt
-        with pytest.raises(Exception):
-            integrate(sqrt(self.x), self.x)
+        r = integrate(sqrt(self.x), self.x)
+        assert r.value is not None
 
     def test_integrate_has_log(self):
         r = integrate(self.x ** 2, self.x)

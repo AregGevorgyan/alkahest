@@ -33,7 +33,7 @@ Items deferred from v1.0 due to algorithmic complexity or hardware availability,
 | **V1-11** Documentation site (Sphinx + mdBook) | 🏗 Scaffolded | Content written; CI build (`docs.yml`) pending deployment |
 | **V1-15** E-graph default rule completeness | ✅ Complete | Trig (sin²+cos²→1, Pow form) and log/exp (exp(log)→x) load by default; `EgraphConfig.include_trig_rules/include_log_exp_rules` opt-out flags; `simplify_egraph_with` Python API |
 | **V1-16** Python API completeness | ✅ Complete | `ExprPool.save_to/load_from`, `GroebnerBasis.compute()`, `solve()` returns `Expr` by default (`numeric=True` for floats) |
-| **V2-20** LaTeX / Unicode pretty-printing | 📋 Planned | Pure-Python tree walk; unblocks notebook demos and docs site |
+| **V2-20** LaTeX / Unicode pretty-printing | ✅ Complete | Pure-Python tree walk; `Expr.node()` kernel hook; `latex()` + `unicode_str()` API; 74 tests |
 | **V2-21** String / expression parsing (`parse(str)`) | 📋 Planned | Pratt recursive-descent parser; complements the PyPI release |
 
 ---

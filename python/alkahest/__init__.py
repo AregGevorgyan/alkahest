@@ -1,3 +1,4 @@
+from ._pretty import latex, unicode_str  # noqa: F401
 from ._context import (  # noqa: F401
     active_domain,
     active_pool,
@@ -367,4 +368,7 @@ __all__ = [
     "active_domain",
     "simplify_enabled",
     "get_context_value",
+    # V2-20
+    "latex",
+    "unicode_str",
 ]
