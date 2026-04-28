@@ -149,6 +149,114 @@ perf stat -e cache-misses,cache-references,instructions \
 
 ---
 
+---
+
+## Agent benchmarks (`agent-benchmark/`)
+
+A separate suite that benchmarks **AI agents** solving math problems when equipped
+with different CAS skill guides. Where the Rust/Python benchmarks measure raw
+library throughput, the agent benchmarks measure skill-driven agent accuracy,
+token cost, and task success rate.
+
+### Concept
+
+Each run gives an AI agent (Claude) one of three skill guides:
+
+| Skill | Library | Skill file |
+|---|---|---|
+| `alkahest` | This library | `alkahest-skill/alkahest.md` |
+| `sympy` | SymPy | `agent-benchmark/skills/sympy.md` |
+| `mathematica` | Wolfram Engine via `wolframclient` | `agent-benchmark/skills/mathematica.md` |
+
+The agent writes a self-contained Python script, which the harness executes and
+checks for correctness. A task is marked correct if the captured `ANSWER:` line
+matches the expected value within tolerance.
+
+### Task catalogue
+
+17 tasks across 6 categories (difficulty 1–3):
+
+| Category | Tasks |
+|---|---|
+| differentiation | `diff_sin_x2`, `diff_poly_leading`, `gradient_sum` |
+| integration | `integrate_x2_definite`, `integrate_sin_definite`, `risch_nonelementary` |
+| simplification | `trig_identity`, `log_exp_simplify`, `trig_sum_simplify` |
+| polynomial | `poly_gcd_eval`, `poly_eval` |
+| solving | `solve_circle_line`, `solve_quadratic_count` |
+| linear\_algebra | `jacobian_entry`, `matrix_det` |
+| numerics | `ball_sin_cos`, `jit_poly_sum` |
+
+### Run
+
+The harness uses [LiteLLM](https://docs.litellm.ai/) so any supported provider
+works — set the matching API key and pass a LiteLLM model string.
+
+```bash
+# Prerequisites
+pip install litellm
+
+# Anthropic (default model: claude-haiku-4-5-20251001)
+ANTHROPIC_API_KEY=sk-... python agent-benchmark/run.py
+
+# OpenAI
+OPENAI_API_KEY=sk-... python agent-benchmark/run.py --model gpt-4o
+
+# Google Gemini
+GEMINI_API_KEY=... python agent-benchmark/run.py --model gemini/gemini-1.5-pro
+
+# Local Ollama (no key needed)
+python agent-benchmark/run.py --model ollama/llama3
+
+# Specific skills and difficulty level
+python agent-benchmark/run.py --skills alkahest,sympy --difficulty 1
+
+# Preview prompts without calling the API
+python agent-benchmark/run.py --dry-run
+
+# Single task, debug mode (prints generated code)
+python agent-benchmark/run.py --tasks diff_sin_x2 --debug
+
+# List available tasks or skills
+python agent-benchmark/run.py --list-tasks
+python agent-benchmark/run.py --list-skills
+
+# Choose model and output paths
+python agent-benchmark/run.py --model claude-sonnet-4-6 \
+    --output agent-benchmark/results/results.jsonl \
+    --report agent-benchmark/results/report.md
+```
+
+### Output
+
+`agent-benchmark/results/results.jsonl` — one JSON line per (skill, task) run:
+
+```json
+{"skill": "alkahest", "task": "diff_sin_x2", "category": "differentiation",
+ "difficulty": 1, "ok": true, "answer_correct": true, "tokens": 512,
+ "wall_ms": 3241.0, "model": "claude-haiku-4-5-20251001"}
+```
+
+`agent-benchmark/results/report.md` — markdown summary with per-skill accuracy,
+full results table, and token usage.
+
+### Metrics
+
+| Metric | Meaning |
+|---|---|
+| Accuracy | Fraction of tasks where `ANSWER:` matches expected |
+| `wall_ms` | End-to-end time including API call + code execution |
+| Tokens | Total input + output tokens per run (cost proxy) |
+| `ok` | Code ran without errors (distinct from answer correctness) |
+
+### Adding a new skill
+
+1. Create `agent-benchmark/skills/<name>.md` following the format of `sympy.md`.
+2. Add an entry to `SKILL_PATHS` in `agent-benchmark/harness.py`.
+3. Add `run_<name>` methods to `benchmarks/competitors/` if you also want
+   the raw timing comparison in the cross-CAS suite.
+
+---
+
 ## Nightly deep run (CI)
 
 The CI nightly job (`.github/workflows/ci.yml`) runs the full proptest suite
