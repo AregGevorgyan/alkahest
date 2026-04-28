@@ -128,6 +128,7 @@ alkahest/
 ├── fuzz/                  # AFL++ fuzz targets
 ├── docs/                  # mdBook and Sphinx documentation
 ├── alkahest-skill/        # Skill for AI to use alkahest
+├── agent-benchmark/       # benchmark for comparing AI use of alkahest vs other CAS
 └── scripts/               # CI helpers (API freeze check, error codes)
 ```
 
