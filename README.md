@@ -82,6 +82,24 @@ result = interval_eval(sin(x), {x: ArbBall(1.0, 1e-10)})
 print(result)  # guaranteed enclosure of sin(1 ± 1e-10)
 ```
 
+### String expressions
+
+```python
+import alkahest
+
+pool = alkahest.ExprPool()
+x = pool.symbol("x")
+
+# Parse a string into a symbolic expression
+e = alkahest.parse("x^2 + 2*x + 1", pool, {"x": x})
+print(e)                    # (x^2 + (x * 2)) + 1
+
+# Round-trip: parse then pretty-print
+expr = alkahest.parse("sin(x)^2 + cos(x)^2", pool, {"x": x})
+print(alkahest.latex(expr))        # \sin\!\left(x\right)^2 + \cos\!\left(x\right)^2
+print(alkahest.unicode_str(expr))  # sin(x)² + cos(x)²
+```
+
 ### Composable transformations
 
 ```python
