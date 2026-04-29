@@ -909,16 +909,24 @@ impl PyEgraphConfig {
     fn const_fold_iters(&self) -> usize { self.inner.const_fold_iters }
 
     #[getter]
-    fn node_limit(&self) -> Option<usize> { self.inner.node_limit }
+    fn node_limit(&self) -> Option<usize> {
+        self.inner.node_limit
+    }
 
     #[getter]
-    fn iter_limit(&self) -> Option<usize> { self.inner.iter_limit }
+    fn iter_limit(&self) -> Option<usize> {
+        self.inner.iter_limit
+    }
 
     #[getter]
-    fn include_trig_rules(&self) -> bool { self.inner.include_trig_rules }
+    fn include_trig_rules(&self) -> bool {
+        self.inner.include_trig_rules
+    }
 
     #[getter]
-    fn include_log_exp_rules(&self) -> bool { self.inner.include_log_exp_rules }
+    fn include_log_exp_rules(&self) -> bool {
+        self.inner.include_log_exp_rules
+    }
 }
 
 #[pyfunction]

@@ -9,8 +9,7 @@ use crate::deriv::log::{DerivationLog, RewriteStep};
 use crate::integrate::engine::IntegrationError;
 use crate::kernel::{ExprData, ExprId, ExprPool};
 use super::poly_utils::{
-    as_integer, as_linear, as_quadratic, is_free_of, poly_degree_in,
-    poly_int_coeffs,
+    as_integer, as_linear, as_quadratic, is_free_of, poly_degree_in, poly_int_coeffs,
 };
 
 // ---------------------------------------------------------------------------

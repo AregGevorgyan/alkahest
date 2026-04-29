@@ -84,7 +84,10 @@ impl FieldElem {
         if is_zero_expr(self.a, pool) {
             let bp = pool.mul(vec![self.b, p]);
             let new_b = pool.pow(bp, pool.integer(-1_i32));
-            return FieldElem { a: pool.integer(0_i32), b: new_b };
+            return FieldElem {
+                a: pool.integer(0_i32),
+                b: new_b,
+            };
         }
         // General case: norm = a^2 - b^2 * P
         let a2 = pool.pow(self.a, pool.integer(2_i32));
