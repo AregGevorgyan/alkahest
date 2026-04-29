@@ -1,47 +1,84 @@
 name: docs
 
-# V1-11 scaffold: build the user guide (mdBook) + Python API (Sphinx)
-# + Rust API (rustdoc). Publish is disabled until the docs are past
-# their TODO stage; for now this just catches breakage.
-
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
+    paths:
+      - 'docs/**'
+      - 'python/alkahest/**'
+      - 'alkahest-core/src/**'
+      - 'alkahest-py/src/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'python/alkahest/**'
+      - 'alkahest-core/src/**'
+      - 'alkahest-py/src/**'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; newer push cancels an in-progress deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  mdbook:
-    name: mdbook build
+  build:
+    name: Build docs
     runs-on: ubuntu-latest
-    continue-on-error: true   # docs being revamped; don't block PRs
     steps:
       - uses: actions/checkout@v4
-      - name: Install mdbook
+
+      - name: Install mdBook
         uses: taiki-e/install-action@v2
         with:
           tool: mdbook
-      - run: mdbook build docs/mdbook
 
-  sphinx:
-    name: sphinx build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Build mdBook (user guide)
+        run: mdbook build docs/mdbook
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install sphinx furo
-      - run: sphinx-build -W --keep-going docs/sphinx docs/sphinx/_build
 
-  rustdoc:
-    name: rustdoc
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Build Sphinx (Python API)
+        run: |
+          pip install sphinx furo
+          sphinx-build -W --keep-going docs/sphinx _site/api
+
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install system deps
+
+      - name: Install system deps (rustdoc)
         run: sudo apt-get install -y libflint-dev llvm-15-dev
-      - run: cargo doc --workspace --no-deps
+
+      - name: Build rustdoc (Rust API)
+        run: cargo doc --workspace --no-deps
         env:
           RUSTDOCFLAGS: "-D warnings"
+
+      - name: Assemble site
+        run: |
+          cp -r docs/mdbook/book/. _site/
+          cp -r target/doc _site/rustdoc
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4
