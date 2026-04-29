@@ -9,7 +9,6 @@ Run after `maturin develop`:
 """
 
 import pytest
-
 from alkahest.alkahest import ArbBall, ExprPool, diff, integrate, interval_eval, sqrt  # noqa: E402
 
 # ---------------------------------------------------------------------------

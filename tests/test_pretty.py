@@ -1,10 +1,18 @@
 """V2-20: LaTeX and Unicode pretty-printing tests."""
-import pytest
 import alkahest
+import pytest
 from alkahest import (
     ExprPool,
-    sin, cos, tan, exp, log, sqrt, abs, floor, ceil,
-    latex, unicode_str,
+    abs,
+    ceil,
+    cos,
+    exp,
+    floor,
+    latex,
+    log,
+    sin,
+    sqrt,
+    unicode_str,
 )
 
 
@@ -139,14 +147,13 @@ class TestLatexArithmetic:
 
     def test_sqrt_pow(self, pool, x):
         # x^(1/2) should render as sqrt
-        from alkahest.alkahest import ExprPool as CorePool
         p2 = ExprPool()
-        y = p2.symbol("y")
-        expr = p2.rational(1, 2)
+        p2.symbol("y")
+        p2.rational(1, 2)
         # Build y^(1/2) via pow — pool.pow is internal, use Python-level
         # This tests the pow renderer handles rational 1/2 → sqrt
         # We can verify via the node walker directly
-        inner = pool.integer(1)
+        pool.integer(1)
         # Build x^(1/2) as a pow node manually (requires pool access):
         # Instead, verify sqrt(x) renders correctly (already tested above)
         pass

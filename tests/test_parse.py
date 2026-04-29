@@ -1,15 +1,18 @@
 """V2-21: Pratt expression parser tests."""
 from __future__ import annotations
 
-import pytest
 import alkahest
+import pytest
 from alkahest import (
     ExprPool,
-    parse,
-    sin, cos, tan, exp, log, sqrt,
-    abs, floor, ceil,
-    simplify,
     ParseError,
+    cos,
+    exp,
+    log,
+    parse,
+    simplify,
+    sin,
+    sqrt,
 )
 
 

@@ -1,5 +1,3 @@
-from ._pretty import latex, unicode_str  # noqa: F401
-from ._parse import parse  # noqa: F401
 from ._context import (  # noqa: F401
     active_domain,
     active_pool,
@@ -9,6 +7,8 @@ from ._context import (  # noqa: F401
     symbol,
 )
 from ._dlpack import _to_numpy  # noqa: F401
+from ._parse import parse  # noqa: F401
+from ._pretty import latex, unicode_str  # noqa: F401
 from ._pytree import (  # noqa: F401
     TreeDef,
     flatten_exprs,
@@ -27,6 +27,7 @@ from ._transform import (  # noqa: F401
 from .alkahest import (  # noqa: F401
     # Phase 17: DAE
     DAE,
+    HAS_EGRAPH,
     # Phase 16: ODE
     ODE,
     # Phase 18: Acausal modelling
@@ -37,6 +38,8 @@ from .alkahest import (  # noqa: F401
     CompiledFn,
     # Core expression types
     DerivedResult,
+    # V1-15: EgraphConfig and simplify_egraph_with
+    EgraphConfig,
     # Phase 20: Hybrid systems
     Event,
     Expr,
@@ -99,9 +102,6 @@ from .alkahest import (  # noqa: F401
     sensitivity_system,
     sign,
     simplify,
-    # V1-15: EgraphConfig and simplify_egraph_with
-    EgraphConfig,
-    HAS_EGRAPH,
     simplify_egraph,
     simplify_egraph_with,
     simplify_expanded,
@@ -134,7 +134,7 @@ except ImportError:
 
 # V1-4 / V1-16: Polynomial system solver + Gröbner basis (optional — requires groebner feature)
 try:
-    from .alkahest import solve, GroebnerBasis, GbPoly  # noqa: F401
+    from .alkahest import GbPoly, GroebnerBasis, solve  # noqa: F401
 except ImportError:
     pass
 
@@ -173,7 +173,7 @@ except ImportError:
         OdeError,
         PoolError,
     )
-from .exceptions import SolverError, ParseError  # noqa: F401  (pure-Python only for now)
+from .exceptions import ParseError, SolverError  # noqa: F401  (pure-Python only for now)
 
 
 def numpy_eval(compiled_fn, *arrays):

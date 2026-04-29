@@ -1,7 +1,6 @@
 """v0.2 feature tests: egraph simplification, AC pattern matching,
 forward-mode AD, integration, and RationalFunction arithmetic."""
 
-import pytest
 from alkahest.alkahest import (
     ExprPool,
     RationalFunction,

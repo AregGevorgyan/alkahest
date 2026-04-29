@@ -13,10 +13,9 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
 import alkahest
-from alkahest import ExprPool, Expr
-
+import pytest
+from alkahest import Expr, ExprPool
 
 # ---------------------------------------------------------------------------
 # V1-16.1: ExprPool persistence

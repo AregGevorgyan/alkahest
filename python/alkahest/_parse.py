@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Tuple
 
 from .exceptions import ParseError
 
@@ -64,11 +63,11 @@ _TOKEN_RE = re.compile(
     re.VERBOSE,
 )
 
-_Token = Tuple[str, str, int]  # (kind, text, offset)
+_Token = tuple[str, str, int]  # (kind, text, offset)
 
 
-def _tokenize(source: str) -> List[_Token]:
-    tokens: List[_Token] = []
+def _tokenize(source: str) -> list[_Token]:
+    tokens: list[_Token] = []
     pos = 0
     n = len(source)
     while pos < n:
@@ -104,7 +103,7 @@ def _tokenize(source: str) -> List[_Token]:
 class _Parser:
     __slots__ = ("_source", "_pool", "_symbols", "_tokens", "_pos")
 
-    def __init__(self, source: str, pool, symbols: Dict[str, object]) -> None:
+    def __init__(self, source: str, pool, symbols: dict[str, object]) -> None:
         self._source = source
         self._pool = pool
         self._symbols = symbols
@@ -295,7 +294,7 @@ def _apply_func(name: str, args: list, offset: int):
 # Public API
 # ---------------------------------------------------------------------------
 
-def parse(source: str, pool, symbols: Optional[Dict[str, object]] = None):
+def parse(source: str, pool, symbols: dict[str, object] | None = None):
     """Parse a mathematical expression string into an :class:`~alkahest.Expr`.
 
     Uses a Pratt (top-down operator precedence) recursive-descent parser.

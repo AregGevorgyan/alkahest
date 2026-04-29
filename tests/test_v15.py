@@ -14,17 +14,17 @@ engine which does not carry those identities.
 
 from __future__ import annotations
 
-import pytest
 import alkahest
+import pytest
 from alkahest import (
-    ExprPool,
     EgraphConfig,
-    simplify_egraph,
-    simplify_egraph_with,
-    sin,
+    ExprPool,
     cos,
     exp,
     log,
+    simplify_egraph,
+    simplify_egraph_with,
+    sin,
 )
 
 needs_egraph = pytest.mark.skipif(
