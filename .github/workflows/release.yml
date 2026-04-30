@@ -13,7 +13,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-14, windows-2022]
+        # macos-14 = arm64 (Apple Silicon), macos-13 = x86_64 (Intel) — built
+        # natively on each to avoid cross-compiling gmp-mpfr-sys assembly.
+        os: [ubuntu-22.04, macos-14, macos-13, windows-2022]
         python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     env:
       # PyO3 0.21 supports up to 3.12; this allows 3.13 via the stable ABI.
@@ -31,6 +33,22 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install flint
 
+      - name: Set up MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-flint
+
+      - name: Add GNU target and configure linker (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          echo '[target.x86_64-pc-windows-gnu]' >> "$USERPROFILE/.cargo/config.toml"
+          echo 'linker = "C:/msys64/mingw64/bin/gcc.exe"' >> "$USERPROFILE/.cargo/config.toml"
+          echo 'ar = "C:/msys64/mingw64/bin/ar.exe"' >> "$USERPROFILE/.cargo/config.toml"
+
       - name: Install maturin
         if: runner.os != 'Linux'
         run: pip install maturin
@@ -43,22 +61,21 @@ jobs:
           args: --release --strip --out dist
           manylinux: "2_28"
           before-script-linux: |
-            yum install -y epel-release || dnf install -y epel-release || true
-            if ! yum install -y flint-devel 2>/dev/null && ! dnf install -y flint-devel 2>/dev/null; then
-              yum install -y gmp-devel mpfr-devel curl make gcc gcc-c++
-              curl -LO https://github.com/flintlib/flint/releases/download/v2.9.0/flint-2.9.0.tar.gz
-              tar xf flint-2.9.0.tar.gz
-              ( cd flint-2.9.0 && ./configure && make -j"$(nproc)" && make install )
-              ldconfig
-            fi
+            dnf install -y epel-release || true
+            dnf install -y flint-devel || true
 
-      - name: Build wheel (macOS universal2)
+      - name: Build wheel (macOS)
         if: runner.os == 'macOS'
-        run: maturin build --release --strip --target universal2-apple-darwin --out dist
+        run: maturin build --release --strip --out dist
 
       - name: Build wheel (Windows)
         if: runner.os == 'Windows'
-        run: maturin build --release --strip --out dist
+        env:
+          PATH: "C:/msys64/mingw64/bin;${{ env.PATH }}"
+          PKG_CONFIG_PATH: "C:/msys64/mingw64/lib/pkgconfig"
+          CC: "C:/msys64/mingw64/bin/gcc.exe"
+          CXX: "C:/msys64/mingw64/bin/g++.exe"
+        run: maturin build --release --strip --target x86_64-pc-windows-gnu --out dist
 
       - name: Smoke test
         run: |
