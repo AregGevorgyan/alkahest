@@ -7,6 +7,60 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Linux: one job builds all Python versions at once via --find-interpreter.
+  # maturin-action runs inside a manylinux_2_28 Docker container that ships
+  # Python 3.9–3.13; the matrix python version lives on the host runner and
+  # is NOT visible inside Docker, so per-version Linux jobs always produced
+  # the same cp311 wheel regardless of the matrix entry.
+  build-linux:
+    name: wheels / ubuntu-22.04
+    runs-on: ubuntu-22.04
+    env:
+      # PyO3 0.21 supports up to 3.12; this allows 3.13 via the stable ABI.
+      PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build wheels (manylinux, all Python versions)
+        uses: PyO3/maturin-action@v1
+        env:
+          # maturin-action passes runner env vars into the Docker container.
+          # Covers both the dnf-installed path (/usr/lib64) and the source-built
+          # path (/usr/local/lib) so rust-lld can always resolve -lflint.
+          RUSTFLAGS: "-L/usr/local/lib -L/usr/lib -L/usr/lib64"
+          PKG_CONFIG_PATH: "/usr/local/lib/pkgconfig:/usr/lib64/pkgconfig"
+        with:
+          command: build
+          args: --release --strip --out dist --find-interpreter
+          manylinux: "2_28"
+          before-script-linux: |
+            dnf install -y epel-release || true
+            dnf config-manager --set-enabled powertools 2>/dev/null || true
+            if ! dnf install -y flint-devel 2>/dev/null; then
+              dnf install -y gmp-devel mpfr-devel make gcc
+              curl -fsSL \
+                https://github.com/flintlib/flint/archive/refs/tags/v2.9.0.tar.gz \
+                | tar xz -C /tmp
+              ( cd /tmp/flint-2.9.0 && ./configure --prefix=/usr/local && make -j"$(nproc)" && make install )
+              ldconfig /usr/local/lib
+            fi
+
+      - name: Smoke test
+        run: |
+          pip install --find-links dist alkahest
+          python -c "import alkahest; p = alkahest.ExprPool(); x = p.symbol('x'); print(alkahest.simplify(x + 0))"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-ubuntu-22.04
+          path: dist/*.whl
+
   build-wheels:
     name: wheel ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -15,10 +69,9 @@ jobs:
       matrix:
         # macos-14 = arm64 (Apple Silicon), macos-13 = x86_64 (Intel) — built
         # natively on each to avoid cross-compiling gmp-mpfr-sys assembly.
-        os: [ubuntu-22.04, macos-14, macos-13, windows-2022]
+        os: [macos-14, macos-13, windows-2022]
         python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     env:
-      # PyO3 0.21 supports up to 3.12; this allows 3.13 via the stable ABI.
       PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
     steps:
       - uses: actions/checkout@v4
@@ -51,34 +104,7 @@ jobs:
             >> "$CARGO_HOME/config.toml"
 
       - name: Install maturin
-        if: runner.os != 'Linux'
         run: pip install maturin
-
-      - name: Build wheel (Linux manylinux)
-        if: runner.os == 'Linux'
-        uses: PyO3/maturin-action@v1
-        env:
-          # maturin-action passes all runner env vars into the manylinux Docker
-          # container via -e flags, so these reach cargo unconditionally.
-          # Covers both the dnf-installed path (/usr/lib64) and the source-built
-          # path (/usr/local/lib) without relying on before-script exports.
-          RUSTFLAGS: "-L/usr/local/lib -L/usr/lib -L/usr/lib64"
-          PKG_CONFIG_PATH: "/usr/local/lib/pkgconfig:/usr/lib64/pkgconfig"
-        with:
-          command: build
-          args: --release --strip --out dist
-          manylinux: "2_28"
-          before-script-linux: |
-            dnf install -y epel-release || true
-            dnf config-manager --set-enabled powertools 2>/dev/null || true
-            if ! dnf install -y flint-devel 2>/dev/null; then
-              dnf install -y gmp-devel mpfr-devel make gcc
-              curl -fsSL \
-                https://github.com/flintlib/flint/archive/refs/tags/v2.9.0.tar.gz \
-                | tar xz -C /tmp
-              ( cd /tmp/flint-2.9.0 && ./configure --prefix=/usr/local && make -j"$(nproc)" && make install )
-              ldconfig /usr/local/lib
-            fi
 
       - name: Build wheel (macOS)
         if: runner.os == 'macOS'
@@ -107,7 +133,7 @@ jobs:
 
   publish-testpypi:
     name: publish to TestPyPI
-    needs: build-wheels
+    needs: [build-linux, build-wheels]
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     environment: release
@@ -125,7 +151,7 @@ jobs:
 
   publish:
     name: publish to PyPI
-    needs: build-wheels
+    needs: [build-linux, build-wheels]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     environment: release
