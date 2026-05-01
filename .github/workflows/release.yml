@@ -69,10 +69,7 @@ jobs:
               curl -fsSL \
                 https://github.com/flintlib/flint/archive/refs/tags/v2.9.0.tar.gz \
                 | tar xz -C /tmp
-              cd /tmp/flint-2.9.0
-              ./configure --prefix=/usr
-              make -j"$(nproc)"
-              make install
+              ( cd /tmp/flint-2.9.0 && ./configure --prefix=/usr && make -j"$(nproc)" && make install )
               ldconfig
             fi
 
@@ -82,12 +79,14 @@ jobs:
 
       - name: Build wheel (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         env:
-          PATH: "C:/msys64/mingw64/bin;${{ env.PATH }}"
           PKG_CONFIG_PATH: "C:/msys64/mingw64/lib/pkgconfig"
           CC: "C:/msys64/mingw64/bin/gcc.exe"
           CXX: "C:/msys64/mingw64/bin/g++.exe"
-        run: maturin build --release --strip --target x86_64-pc-windows-gnu --out dist
+        run: |
+          export PATH="C:/msys64/mingw64/bin:$PATH"
+          maturin build --release --strip --target x86_64-pc-windows-gnu --out dist
 
       - name: Smoke test
         run: |
