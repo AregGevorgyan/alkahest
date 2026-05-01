@@ -158,7 +158,7 @@ jobs:
 
       - name: LeakSanitizer
         env:
-          LSAN_OPTIONS: suppressions=lsan.supp
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/lsan.supp
         run: |
           RUSTFLAGS="-Zsanitizer=leak" \
           cargo +nightly test --workspace --lib --tests \

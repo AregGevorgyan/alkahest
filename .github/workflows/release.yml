@@ -43,11 +43,12 @@ jobs:
 
       - name: Add GNU target and configure linker (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           rustup target add x86_64-pc-windows-gnu
-          echo '[target.x86_64-pc-windows-gnu]' >> "$USERPROFILE/.cargo/config.toml"
-          echo 'linker = "C:/msys64/mingw64/bin/gcc.exe"' >> "$USERPROFILE/.cargo/config.toml"
-          echo 'ar = "C:/msys64/mingw64/bin/ar.exe"' >> "$USERPROFILE/.cargo/config.toml"
+          mkdir -p "$CARGO_HOME"
+          printf '[target.x86_64-pc-windows-gnu]\nlinker = "C:/msys64/mingw64/bin/gcc.exe"\nar = "C:/msys64/mingw64/bin/ar.exe"\n' \
+            >> "$CARGO_HOME/config.toml"
 
       - name: Install maturin
         if: runner.os != 'Linux'
@@ -62,7 +63,18 @@ jobs:
           manylinux: "2_28"
           before-script-linux: |
             dnf install -y epel-release || true
-            dnf install -y flint-devel || true
+            dnf config-manager --set-enabled powertools 2>/dev/null || true
+            if ! dnf install -y flint-devel 2>/dev/null; then
+              dnf install -y gmp-devel mpfr-devel make gcc
+              curl -fsSL \
+                https://github.com/flintlib/flint/archive/refs/tags/v2.9.0.tar.gz \
+                | tar xz -C /tmp
+              cd /tmp/flint-2.9.0
+              ./configure --prefix=/usr
+              make -j"$(nproc)"
+              make install
+              ldconfig
+            fi
 
       - name: Build wheel (macOS)
         if: runner.os == 'macOS'
