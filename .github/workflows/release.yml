@@ -69,9 +69,13 @@ jobs:
               curl -fsSL \
                 https://github.com/flintlib/flint/archive/refs/tags/v2.9.0.tar.gz \
                 | tar xz -C /tmp
-              ( cd /tmp/flint-2.9.0 && ./configure --prefix=/usr && make -j"$(nproc)" && make install )
-              ldconfig
+              ( cd /tmp/flint-2.9.0 && ./configure --prefix=/usr/local && make -j"$(nproc)" && make install )
+              ldconfig /usr/local/lib
             fi
+            # rust-lld in the manylinux sysroot doesn't search /usr/lib or
+            # /usr/local/lib by default; add them explicitly so -lflint resolves.
+            export RUSTFLAGS="-L/usr/local/lib -L/usr/lib -L/usr/lib64 ${RUSTFLAGS:-}"
+            export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
       - name: Build wheel (macOS)
         if: runner.os == 'macOS'
