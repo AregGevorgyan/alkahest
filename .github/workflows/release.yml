@@ -73,8 +73,11 @@ jobs:
               ldconfig /usr/local/lib
             fi
             # rust-lld in the manylinux sysroot doesn't search /usr/lib or
-            # /usr/local/lib by default; add them explicitly so -lflint resolves.
-            export RUSTFLAGS="-L/usr/local/lib -L/usr/lib -L/usr/lib64 ${RUSTFLAGS:-}"
+            # /usr/local/lib by default; write a Cargo config so the flags are
+            # picked up regardless of how maturin invokes cargo.
+            mkdir -p "$GITHUB_WORKSPACE/.cargo"
+            printf '[target.x86_64-unknown-linux-gnu]\nrustflags = ["-L/usr/local/lib", "-L/usr/lib", "-L/usr/lib64"]\n' \
+              > "$GITHUB_WORKSPACE/.cargo/config.toml"
             export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
       - name: Build wheel (macOS)
