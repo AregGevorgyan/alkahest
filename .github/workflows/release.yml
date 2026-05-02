@@ -106,14 +106,10 @@ jobs:
             mingw-w64-x86_64-flint
             mingw-w64-x86_64-pkg-config
 
-      - name: Add GNU target and configure linker (Windows)
+      - name: Add GNU Rust target (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: |
-          rustup target add x86_64-pc-windows-gnu
-          mkdir -p "$CARGO_HOME"
-          printf '[target.x86_64-pc-windows-gnu]\nlinker = "C:/msys64/mingw64/bin/gcc.exe"\nar = "C:/msys64/mingw64/bin/ar.exe"\n' \
-            >> "$CARGO_HOME/config.toml"
+        run: rustup target add x86_64-pc-windows-gnu
 
       - name: Install maturin
         run: pip install maturin
