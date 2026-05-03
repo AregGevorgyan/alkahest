@@ -79,6 +79,11 @@ pub const REGISTRY: &[ErrorSpec] = &[
     ErrorSpec { code: "E-IO-007", class: "IoError", cause: Cause::UserInput, remediation: None },
     ErrorSpec { code: "E-IO-008", class: "IoError", cause: Cause::UserInput, remediation: None },
     ErrorSpec { code: "E-IO-009", class: "IoError", cause: Cause::UserInput, remediation: None },
+    // E-MOD — ModularError (V2-1 Modular/CRT framework)
+    ErrorSpec { code: "E-MOD-001", class: "ModularError", cause: Cause::UserInput,   remediation: Some("use a prime modulus p ≥ 2, e.g. 101, 1009, 32749") },
+    ErrorSpec { code: "E-MOD-002", class: "ModularError", cause: Cause::UserInput,   remediation: Some("ensure all images share the same variable ordering and modulus") },
+    ErrorSpec { code: "E-MOD-003", class: "ModularError", cause: Cause::UserInput,   remediation: Some("provide at least one (MultiPolyFp, prime) pair") },
+    ErrorSpec { code: "E-MOD-004", class: "ModularError", cause: Cause::Unsupported, remediation: Some("provide more modular images so the prime product M exceeds 2 * max_coeff²") },
     // E-PARSE — reserved for parser integration
     // E-DOMAIN — reserved; DomainError is Python-only pending Rust implementation
 ];

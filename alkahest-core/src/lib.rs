@@ -12,6 +12,8 @@ pub mod jit;
 pub mod kernel;
 pub mod lean;
 pub mod matrix;
+// V2-1 — Modular / CRT framework
+pub mod modular;
 pub mod ode;
 pub mod pattern;
 pub mod poly;
@@ -75,6 +77,11 @@ pub use poly::groebner::{GbPoly, GroebnerBasis, MonomialOrder};
 
 pub use errors::AlkahestError;
 pub use lean::emit_lean_expr as emit_lean;
+// V2-1 — Modular / CRT framework
+pub use modular::{
+    is_prime, lift_crt, mignotte_bound, rational_reconstruction, reduce_mod, select_lucky_prime,
+    ModularError, ModularValue, MultiPolyFp,
+};
 pub use primitive::{Capabilities, CoverageReport, CoverageRow, Primitive, PrimitiveRegistry};
 #[cfg(feature = "groebner")]
 pub use solver::{expr_to_gbpoly, solve_polynomial_system, Solution, SolutionSet, SolverError};
@@ -128,6 +135,10 @@ pub mod experimental {
     pub use crate::lean::emit_lean_expr as emit_lean;
     pub use crate::ode::sensitivity::{
         adjoint_system, sensitivity_system, AdjointSystem, SensitivitySystem,
+    };
+    pub use crate::modular::{
+        is_prime, lift_crt, mignotte_bound, rational_reconstruction, reduce_mod,
+        select_lucky_prime, ModularError, ModularValue, MultiPolyFp,
     };
     pub use crate::simplify::{simplify_egraph, simplify_expanded};
     pub use crate::stablehlo::emit_stablehlo;

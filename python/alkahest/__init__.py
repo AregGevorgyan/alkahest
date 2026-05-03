@@ -1,3 +1,4 @@
+from . import modular  # noqa: F401 — V2-1: expose alkahest.modular submodule
 from ._context import (  # noqa: F401
     active_domain,
     active_pool,
@@ -25,6 +26,8 @@ from ._transform import (  # noqa: F401
     trace_fn,
 )
 from .alkahest import (  # noqa: F401
+    # V2-1: Modular / CRT framework
+    MultiPolyFp,
     # Phase 17: DAE
     DAE,
     HAS_EGRAPH,

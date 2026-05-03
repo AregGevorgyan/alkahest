@@ -44,6 +44,12 @@ use alkahest_core::{
 #[cfg(feature = "cuda")]
 use alkahest_core::compile_cuda as core_compile_cuda;
 use alkahest_core::kernel::expr::PredicateKind;
+// V2-1 — Modular / CRT framework
+use alkahest_core::modular::{
+    lift_crt as core_lift_crt, mignotte_bound as core_mignotte_bound,
+    rational_reconstruction as core_rational_reconstruction, reduce_mod as core_reduce_mod,
+    select_lucky_prime as core_select_lucky_prime, ModularError, MultiPolyFp,
+};
 use alkahest_core::{
     diff as core_diff, diff_forward as core_diff_forward, integrate as core_integrate, load_from,
     log_exp_rules, match_pattern as core_match_pattern, simplify as core_simplify,
@@ -69,6 +75,7 @@ pyo3::create_exception!(alkahest, PyDiffError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyPoolError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyIntegrationError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyMatrixError, PyAlkahestError);
+pyo3::create_exception!(alkahest, PyModularError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyOdeError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyDaeError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyJitError, PyAlkahestError);
@@ -145,6 +152,13 @@ fn integrate_error_to_py(e: IntegrationError) -> PyErr {
 fn conv_error_to_py(e: alkahest_core::ConversionError) -> PyErr {
     Python::with_gil(|py| {
         let exc_type = py.get_type_bound::<PyConversionError>();
+        make_structured_err(py, &exc_type, &e)
+    })
+}
+
+fn modular_error_to_py(e: ModularError) -> PyErr {
+    Python::with_gil(|py| {
+        let exc_type = py.get_type_bound::<PyModularError>();
         make_structured_err(py, &exc_type, &e)
     })
 }
@@ -2974,6 +2988,121 @@ fn py_solve(
     }
 }
 
+// ---------------------------------------------------------------------------
+// V2-1 — Modular / CRT framework
+// ---------------------------------------------------------------------------
+
+#[pyclass(name = "MultiPolyFp")]
+struct PyMultiPolyFp {
+    inner: MultiPolyFp,
+}
+
+#[pymethods]
+impl PyMultiPolyFp {
+    fn is_zero(&self) -> bool {
+        self.inner.is_zero()
+    }
+
+    fn total_degree(&self) -> u32 {
+        self.inner.total_degree()
+    }
+
+    #[getter]
+    fn modulus(&self) -> u64 {
+        self.inner.modulus
+    }
+
+    fn __repr__(&self) -> String {
+        format!("MultiPolyFp({})", self.inner)
+    }
+
+    fn __str__(&self) -> String {
+        self.inner.to_string()
+    }
+}
+
+/// Reduce a polynomial over ℤ to F_p = ℤ/pℤ.
+///
+/// Returns a `MultiPolyFp` with coefficients in [0, p).
+/// Raises `ModularError` if `p` is not prime.
+#[pyfunction]
+#[pyo3(name = "modular_reduce")]
+fn py_modular_reduce(poly: PyRef<PyMultiPoly>, p: u64) -> PyResult<PyMultiPolyFp> {
+    core_reduce_mod(&poly.inner, p)
+        .map(|fp| PyMultiPolyFp { inner: fp })
+        .map_err(modular_error_to_py)
+}
+
+/// Reconstruct a polynomial over ℤ from modular images via CRT.
+///
+/// `polys` and `primes` must have the same length.
+/// All images must share the same variable list.
+#[pyfunction]
+#[pyo3(name = "modular_lift_crt")]
+fn py_modular_lift_crt(
+    polys: Vec<PyRef<PyMultiPolyFp>>,
+    primes: Vec<u64>,
+) -> PyResult<PyMultiPoly> {
+    if polys.len() != primes.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "polys and primes must have the same length",
+        ));
+    }
+    let images: Vec<(MultiPolyFp, u64)> = polys
+        .iter()
+        .zip(primes.iter())
+        .map(|(p, &prime)| (p.inner.clone(), prime))
+        .collect();
+    core_lift_crt(&images)
+        .map(|mp| PyMultiPoly { inner: mp })
+        .map_err(modular_error_to_py)
+}
+
+/// Rational reconstruction: find a/b ≡ n (mod m) with small |a| and b.
+///
+/// Returns `(a_str, b_str)` as decimal strings (convert with `int()`),
+/// or `None` if no rational with norm ≤ ⌊√(m/2)⌋ exists.
+/// Both `n_str` and `m_str` are decimal integer strings.
+#[pyfunction]
+#[pyo3(name = "modular_rational_reconstruction")]
+fn py_modular_rational_reconstruction(
+    n_str: &str,
+    m_str: &str,
+) -> PyResult<Option<(String, String)>> {
+    use rug::{Complete, Integer};
+    let n = Integer::parse(n_str)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid integer for n"))?
+        .complete();
+    let m = Integer::parse(m_str)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid integer for m"))?
+        .complete();
+    Ok(core_rational_reconstruction(&n, &m).map(|(a, b)| (a.to_string(), b.to_string())))
+}
+
+/// Compute the Mignotte coefficient bound for a polynomial.
+///
+/// Returns the bound as a decimal integer string (use `int()` to convert).
+#[pyfunction]
+#[pyo3(name = "modular_mignotte_bound")]
+fn py_modular_mignotte_bound(poly: PyRef<PyMultiPoly>) -> String {
+    core_mignotte_bound(&poly.inner).to_string()
+}
+
+/// Select the smallest lucky prime not in `used` that does not divide `avoid_divisor_str`.
+///
+/// `avoid_divisor_str` is a decimal integer string. Pass `"0"` for no constraint.
+#[pyfunction]
+#[pyo3(name = "modular_select_lucky_prime")]
+fn py_modular_select_lucky_prime(avoid_divisor_str: &str, used: Vec<u64>) -> PyResult<u64> {
+    use rug::{Complete, Integer};
+    let avoid = Integer::parse(avoid_divisor_str)
+        .map_err(|_| {
+            pyo3::exceptions::PyValueError::new_err("invalid integer for avoid_divisor")
+        })?
+        .complete();
+    Ok(core_select_lucky_prime(&avoid, &used))
+}
+
 #[pymodule]
 fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
@@ -3081,6 +3210,13 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyGroebnerBasis>()?;
         m.add_function(wrap_pyfunction!(py_solve, m)?)?;
     }
+    // V2-1 — Modular / CRT framework
+    m.add_class::<PyMultiPolyFp>()?;
+    m.add_function(wrap_pyfunction!(py_modular_reduce, m)?)?;
+    m.add_function(wrap_pyfunction!(py_modular_lift_crt, m)?)?;
+    m.add_function(wrap_pyfunction!(py_modular_rational_reconstruction, m)?)?;
+    m.add_function(wrap_pyfunction!(py_modular_mignotte_bound, m)?)?;
+    m.add_function(wrap_pyfunction!(py_modular_select_lucky_prime, m)?)?;
     // V1-3 — Structured exception hierarchy
     m.add("AlkahestError", m.py().get_type_bound::<PyAlkahestError>())?;
     m.add(
@@ -3095,6 +3231,7 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.py().get_type_bound::<PyIntegrationError>(),
     )?;
     m.add("MatrixError", m.py().get_type_bound::<PyMatrixError>())?;
+    m.add("ModularError", m.py().get_type_bound::<PyModularError>())?;
     m.add("OdeError", m.py().get_type_bound::<PyOdeError>())?;
     m.add("DaeError", m.py().get_type_bound::<PyDaeError>())?;
     m.add("JitError", m.py().get_type_bound::<PyJitError>())?;

@@ -20,6 +20,7 @@ dependencies = [
  "cudarc",
  "dashmap",
  "egglog",
+ "gmp-mpfr-sys",
  "inkwell",
  "proptest",
  "rayon",
@@ -41,6 +42,7 @@ dependencies = [
  "alkahest-core",
  "numpy",
  "pyo3",
+ "rug",
 ]
 
 [[package]]
