@@ -80,6 +80,7 @@ from .alkahest import (  # noqa: F401
     eval_expr,
     exp,
     floor,
+    jit_is_available,
     gamma,
     # Phase 24: Horner-form code emission
     horner,
@@ -117,6 +118,8 @@ from .alkahest import (  # noqa: F401
     # V1-12: expanded primitive registry
     tan,
     tanh,
+    # V5-1: Lean 4 certificate exporter
+    to_lean,
     # V5-2: StableHLO/XLA bridge
     to_stablehlo,
     version,
@@ -333,6 +336,7 @@ __all__ = [
     "CompiledFn",
     "compile_expr",
     "eval_expr",
+    "jit_is_available",
     # Phase 22
     "ArbBall",
     "interval_eval",
@@ -364,6 +368,8 @@ __all__ = [
     "map_exprs",
     # PA-9
     "piecewise",
+    # V5-1
+    "to_lean",
     # V5-2
     "to_stablehlo",
     # V1-4 / V1-16: Polynomial system solver + Gröbner basis (requires groebner feature)

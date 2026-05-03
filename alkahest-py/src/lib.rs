@@ -2,6 +2,7 @@ use alkahest_core::{
     adjoint_system as core_adjoint_system,
     // Phase 21 — JIT
     compile as core_compile,
+    jit_available as core_jit_available,
     emit_horner_c as core_emit_horner_c,
     emit_stablehlo as core_emit_stablehlo,
     eval_interp as core_eval_interp,
@@ -2121,6 +2122,22 @@ fn py_compile_expr(
     expr: PyRef<PyExpr>,
     inputs: &Bound<'_, PyList>,
 ) -> PyResult<PyCompiledFn> {
+    if !core_jit_available() {
+        let warnings = py.import_bound("warnings")?;
+        warnings.call_method1(
+            "warn",
+            (
+                "JIT compilation (LLVM) is not available in this build; \
+                 compile_expr() is falling back to the tree-walking interpreter. \
+                 For native performance rebuild with --features jit and LLVM 15, \
+                 or call eval_expr() directly to make the interpreter use explicit.",
+                py.get_type_bound::<pyo3::exceptions::PyRuntimeWarning>(),
+                // stack level 2 so the warning points at the caller's site
+                2i32,
+            ),
+        )?;
+    }
+
     let pool = expr.pool.borrow(py);
     let input_ids: Vec<ExprId> = inputs
         .iter()
@@ -2140,6 +2157,16 @@ fn py_compile_expr(
         snapshot: compiled,
         n_inputs: input_ids.len(),
     })
+}
+
+/// Return True if LLVM JIT compilation is available in this build.
+///
+/// When False, `compile_expr` falls back to the tree-walking interpreter and
+/// emits a RuntimeWarning.
+#[pyfunction]
+#[pyo3(name = "jit_is_available")]
+fn py_jit_is_available() -> bool {
+    core_jit_available()
 }
 
 /// Evaluate a symbolic expression numerically using the interpreter.
@@ -3047,6 +3074,7 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Phase 21 — JIT
     m.add_function(wrap_pyfunction!(py_compile_expr, m)?)?;
     m.add_function(wrap_pyfunction!(py_eval_expr, m)?)?;
+    m.add_function(wrap_pyfunction!(py_jit_is_available, m)?)?;
     m.add_class::<PyCompiledFn>()?;
     // Phase 22 — Ball arithmetic
     m.add_class::<PyArbBall>()?;

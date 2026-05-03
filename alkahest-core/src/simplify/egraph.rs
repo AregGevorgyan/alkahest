@@ -62,7 +62,9 @@ mod backend {
             Node::Add(args) => {
                 // Binary left-fold; the parser flattens this back to n-ary.
                 let mut it = args.into_iter();
-                let first = it.next().unwrap();
+                let first = it
+                    .next()
+                    .expect("Add node must have at least one argument — ExprPool invariant violated");
                 let init = expr_to_egglog(first, pool);
                 it.fold(init, |acc, id| {
                     format!("(Add {acc} {})", expr_to_egglog(id, pool))
@@ -70,7 +72,9 @@ mod backend {
             }
             Node::Mul(args) => {
                 let mut it = args.into_iter();
-                let first = it.next().unwrap();
+                let first = it
+                    .next()
+                    .expect("Mul node must have at least one argument — ExprPool invariant violated");
                 let init = expr_to_egglog(first, pool);
                 it.fold(init, |acc, id| {
                     format!("(Mul {acc} {})", expr_to_egglog(id, pool))
@@ -100,9 +104,62 @@ mod backend {
     // 2. Build the complete egglog program  (RW-2: uses EgraphConfig)
     // -----------------------------------------------------------------------
 
+    /// Count unique nodes in the expression DAG.
+    ///
+    /// Used to enforce `EgraphConfig::node_limit` before handing the expression
+    /// to egglog, preventing OOM on pathological inputs.
+    fn count_dag_nodes(expr: ExprId, pool: &ExprPool) -> usize {
+        let mut visited = std::collections::HashSet::new();
+        count_dag_nodes_rec(expr, pool, &mut visited);
+        visited.len()
+    }
+
+    fn count_dag_nodes_rec(
+        expr: ExprId,
+        pool: &ExprPool,
+        visited: &mut std::collections::HashSet<ExprId>,
+    ) {
+        if !visited.insert(expr) {
+            return;
+        }
+        match pool.get(expr) {
+            ExprData::Add(args) | ExprData::Mul(args) => {
+                for &a in &args {
+                    count_dag_nodes_rec(a, pool, visited);
+                }
+            }
+            ExprData::Pow { base, exp } => {
+                count_dag_nodes_rec(base, pool, visited);
+                count_dag_nodes_rec(exp, pool, visited);
+            }
+            ExprData::Func { args, .. } => {
+                for &a in &args {
+                    count_dag_nodes_rec(a, pool, visited);
+                }
+            }
+            ExprData::Piecewise { branches, default } => {
+                for (cond, val) in &branches {
+                    count_dag_nodes_rec(*cond, pool, visited);
+                    count_dag_nodes_rec(*val, pool, visited);
+                }
+                count_dag_nodes_rec(default, pool, visited);
+            }
+            ExprData::Predicate { args, .. } => {
+                for a in args {
+                    count_dag_nodes_rec(a, pool, visited);
+                }
+            }
+            // Leaf nodes
+            ExprData::Integer(_)
+            | ExprData::Rational(_)
+            | ExprData::Float(_)
+            | ExprData::Symbol { .. } => {}
+        }
+    }
+
     fn egglog_program(expr_str: &str, config: &super::EgraphConfig) -> String {
-        // egglog 0.4 does not expose a node_limit option; the field is
-        // reserved for when a future version adds support.
+        // node_limit is enforced as a pre-saturation DAG-size check in
+        // simplify_egraph_impl; egglog 0.4 does not expose a per-run node cap.
         let node_limit_line = String::new();
         let iter_limit_line = config
             .iter_limit
@@ -419,6 +476,22 @@ mod backend {
         config: &super::EgraphConfig,
     ) -> crate::deriv::log::DerivedExpr<ExprId> {
         use crate::deriv::log::{DerivationLog, DerivedExpr, RewriteStep};
+
+        // Enforce the node limit before handing the expression to egglog.
+        // Saturation can materialise exponentially many equivalent forms, so a
+        // hard pre-check on input size prevents OOM on pathological inputs.
+        if let Some(limit) = config.node_limit {
+            let n = count_dag_nodes(expr, pool);
+            if n > limit {
+                let mut log = DerivationLog::new();
+                log.push(RewriteStep::simple(
+                    "egraph_node_limit_exceeded",
+                    expr,
+                    expr,
+                ));
+                return DerivedExpr::with_log(expr, log);
+            }
+        }
 
         let expr_str = expr_to_egglog(expr, pool);
         let program = egglog_program(&expr_str, config);

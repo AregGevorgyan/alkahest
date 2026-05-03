@@ -53,7 +53,7 @@ pub use simplify::{
 };
 
 // Phase 21 — JIT
-pub use jit::{compile, eval_interp, CompiledFn, JitError};
+pub use jit::{compile, compile_jit_only, eval_interp, jit_available, CompiledFn, JitError};
 
 // V5-2 — StableHLO/XLA bridge
 pub use stablehlo::emit_stablehlo;

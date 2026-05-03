@@ -61,6 +61,12 @@ pub enum JitError {
     UnsupportedNode(String),
     CompilationFailed(String),
     LlvmInitError(String),
+    /// The JIT backend is not compiled into this build.
+    ///
+    /// Returned when `compile_jit_only` is called on a build that was not
+    /// compiled with `--features jit`.  Use `eval_expr` for interpreted
+    /// evaluation or rebuild with `--features jit` and LLVM 15 installed.
+    NotAvailable(String),
 }
 
 impl fmt::Display for JitError {
@@ -69,6 +75,7 @@ impl fmt::Display for JitError {
             JitError::UnsupportedNode(s) => write!(f, "unsupported expression node: {s}"),
             JitError::CompilationFailed(s) => write!(f, "JIT compilation failed: {s}"),
             JitError::LlvmInitError(s) => write!(f, "LLVM init error: {s}"),
+            JitError::NotAvailable(s) => write!(f, "JIT not available: {s}"),
         }
     }
 }
@@ -81,6 +88,7 @@ impl crate::errors::AlkahestError for JitError {
             JitError::UnsupportedNode(_) => "E-JIT-001",
             JitError::CompilationFailed(_) => "E-JIT-002",
             JitError::LlvmInitError(_) => "E-JIT-003",
+            JitError::NotAvailable(_) => "E-JIT-004",
         }
     }
 
@@ -94,6 +102,9 @@ impl crate::errors::AlkahestError for JitError {
             ),
             JitError::LlvmInitError(_) => Some(
                 "ensure LLVM 15 is installed and LLVM_SYS_150_PREFIX is set correctly",
+            ),
+            JitError::NotAvailable(_) => Some(
+                "rebuild with --features jit and LLVM 15 installed, or use eval_expr() for the interpreter path",
             ),
         }
     }
@@ -194,6 +205,43 @@ pub fn compile(expr: ExprId, inputs: &[ExprId], pool: &ExprPool) -> Result<Compi
     #[cfg(not(feature = "jit"))]
     {
         compile_interpreter(expr, inputs, pool)
+    }
+}
+
+/// Returns `true` if LLVM JIT compilation is available in this build.
+///
+/// When `false`, `compile` falls back to the tree-walking interpreter.
+/// Callers that require native performance should check this at startup and
+/// warn users accordingly — or fail fast via `compile_jit_only`.
+pub const fn jit_available() -> bool {
+    cfg!(feature = "jit")
+}
+
+/// Compile `expr` to a native LLVM function, refusing to fall back to the
+/// interpreter.
+///
+/// Returns `Err(JitError::NotAvailable)` when the build was not compiled with
+/// `--features jit`.  Use `compile` for the version that silently falls back to
+/// the interpreter.
+pub fn compile_jit_only(
+    expr: ExprId,
+    inputs: &[ExprId],
+    pool: &ExprPool,
+) -> Result<CompiledFn, JitError> {
+    #[cfg(feature = "jit")]
+    {
+        compile_llvm(expr, inputs, pool)
+    }
+
+    #[cfg(not(feature = "jit"))]
+    {
+        let _ = (expr, inputs, pool);
+        Err(JitError::NotAvailable(
+            "this build was not compiled with --features jit; \
+             LLVM 15 is required for native code generation. \
+             Use eval_expr() for interpreted evaluation."
+                .to_string(),
+        ))
     }
 }
 
@@ -406,7 +454,12 @@ mod llvm_backend {
         let mut values: HashMap<ExprId, FloatValue<'_>> = HashMap::new();
 
         // Load input values from array
-        let inputs_ptr = function.get_nth_param(0).unwrap().into_pointer_value();
+        let inputs_ptr = function
+            .get_nth_param(0)
+            .ok_or_else(|| {
+                JitError::CompilationFailed("failed to get JIT inputs parameter".to_string())
+            })?
+            .into_pointer_value();
         for (i, &var) in inputs.iter().enumerate() {
             let idx = i64_type.const_int(i as u64, false);
             let gep = unsafe {
