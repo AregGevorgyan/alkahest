@@ -5,20 +5,22 @@ use crate::kernel::{
 use std::fmt;
 
 // ---------------------------------------------------------------------------
-// Phase 30 — Sharded ExprPool for parallel workloads.
+// Lock-free arena for ExprPool nodes.
 //
 // Strategy:
-//   * The `nodes` array (ExprId → ExprData) is append-only after creation, so
-//     reads only need a shared reference.  We protect it with an `RwLock` so
-//     many parallel readers can proceed without blocking each other.
-//   * The `index` (ExprData → ExprId) requires exclusive access during
-//     insertion.  Under `--features parallel` we replace `HashMap` behind a
-//     `Mutex` with `DashMap`, which shards the map internally so concurrent
-//     inserts on *different* keys don't contend.
-//   * The `nodes` Vec is still behind a `Mutex` because we need an atomic
-//     read-len + push.  This is a single word compare on the fast path
-//     (cache-line friendly).  A future upgrade can switch to a `boxcar::Vec`
-//     (lock-free append-only Vec) if profiling shows this is the bottleneck.
+//   * The `nodes` array (ExprId → ExprData) is a `boxcar::Vec` — a
+//     lock-free, append-only, reference-stable segmented array.  Reads
+//     (`with`, `get`, `len`) acquire no lock at all; they index directly
+//     into the array via a single atomic load.
+//   * The `index` (ExprData → ExprId) still requires coordination during
+//     insertion to preserve hash-cons uniqueness:
+//     - Under `--features parallel` we use `DashMap::entry` which holds a
+//       per-shard write-lock only for the duration of the insert.  The
+//       closure passed to `or_insert_with` calls `boxcar::push` (lock-free)
+//       while the shard lock is held, so no two threads can insert the same
+//       key.
+//     - Without `parallel` the `Mutex<HashMap>` serialises all inserts as
+//       before; the boxcar push happens while the Mutex is held.
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "parallel")]
@@ -29,7 +31,6 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "parallel"))]
 use std::sync::Mutex;
-use std::sync::RwLock;
 
 // ---------------------------------------------------------------------------
 // PoolState — two variants depending on build features
@@ -49,8 +50,11 @@ impl PoolIndex {
     fn get(&self, data: &ExprData) -> Option<ExprId> {
         self.0.get(data).map(|v| *v)
     }
-    fn insert(&self, data: ExprData, id: ExprId) {
-        self.0.insert(data, id);
+    /// Atomically return the existing id for `key`, or call `f` to produce one
+    /// and insert it.  The DashMap shard write-lock is held for the duration of
+    /// `f`, guaranteeing at most one call to `f` per unique key.
+    fn or_insert_with(&self, key: ExprData, f: impl FnOnce() -> ExprId) -> ExprId {
+        *self.0.entry(key).or_insert_with(f)
     }
 }
 
@@ -71,12 +75,13 @@ impl PoolIndex {
 ///
 /// `ExprPool` is `Send + Sync`.
 ///
-/// Under `--features parallel` the index uses `DashMap` to reduce contention
-/// on concurrent inserts; the nodes `Vec` uses a `Mutex` (cheap: only locked
-/// during the push, which is rare once the pool is warm).
+/// Read operations (`with`, `get`, `len`) are fully lock-free — they index
+/// into a `boxcar::Vec` via a single atomic load with no lock acquisition.
+/// Write operations (`intern`) use a per-shard lock (parallel mode) or a
+/// `Mutex` (non-parallel mode) only during new-node insertion.
 pub struct ExprPool {
-    /// Append-only; indexed by `ExprId.0`.  `RwLock` allows parallel reads.
-    nodes: RwLock<Vec<ExprData>>,
+    /// Lock-free, append-only, reference-stable node array.
+    nodes: boxcar::Vec<ExprData>,
     /// Deduplication index: ExprData → ExprId.
     #[cfg(feature = "parallel")]
     index: PoolIndex,
@@ -90,7 +95,7 @@ unsafe impl Sync for ExprPool {}
 impl ExprPool {
     pub fn new() -> Self {
         ExprPool {
-            nodes: RwLock::new(Vec::new()),
+            nodes: boxcar::Vec::new(),
             #[cfg(feature = "parallel")]
             index: PoolIndex::new(),
             #[cfg(not(feature = "parallel"))]
@@ -101,23 +106,18 @@ impl ExprPool {
     /// Intern `data`, returning a shared [`ExprId`]. Identical structures
     /// always return the same id; structural equality ⟺ id equality.
     pub fn intern(&self, data: ExprData) -> ExprId {
-        // --- fast path: already interned ---
         #[cfg(feature = "parallel")]
         {
+            // Fast path: lock-free DashMap read.
             if let Some(id) = self.index.get(&data) {
                 return id;
             }
-            // Slow path: insert new node atomically.
-            // We use a double-checked pattern: lock nodes, re-check index
-            // (another thread may have inserted between our check and lock).
-            let mut nodes = self.nodes.write().expect("ExprPool nodes RwLock poisoned");
-            if let Some(id) = self.index.get(&data) {
-                return id;
-            }
-            let id = ExprId(nodes.len() as u32);
-            self.index.insert(data.clone(), id);
-            nodes.push(data);
-            id
+            // Slow path: DashMap shard write-lock ensures at most one push
+            // per unique key.  `boxcar::push` is lock-free so it can be
+            // called safely while the shard lock is held.
+            self.index.or_insert_with(data.clone(), || {
+                ExprId(self.nodes.push(data) as u32)
+            })
         }
 
         #[cfg(not(feature = "parallel"))]
@@ -126,18 +126,18 @@ impl ExprPool {
             if let Some(id) = idx.get(&data) {
                 return id;
             }
-            let mut nodes = self.nodes.write().expect("ExprPool nodes RwLock poisoned");
-            let id = ExprId(nodes.len() as u32);
-            idx.insert(data.clone(), id);
-            nodes.push(data);
+            let id = ExprId(self.nodes.push(data.clone()) as u32);
+            idx.insert(data, id);
             id
         }
     }
 
-    /// Borrow a node by id and apply `f` without cloning.
+    /// Borrow a node by id and apply `f` without cloning.  Lock-free.
     pub fn with<R, F: FnOnce(&ExprData) -> R>(&self, id: ExprId, f: F) -> R {
-        let nodes = self.nodes.read().expect("ExprPool nodes RwLock poisoned");
-        f(&nodes[id.0 as usize])
+        f(self
+            .nodes
+            .get(id.0 as usize)
+            .expect("ExprPool: ExprId out of range"))
     }
 
     /// Clone and return the `ExprData` for `id`.
@@ -145,16 +145,13 @@ impl ExprPool {
         self.with(id, |d| d.clone())
     }
 
-    /// Number of distinct expressions interned so far.
+    /// Number of distinct expressions interned so far.  Lock-free.
     pub fn len(&self) -> usize {
-        self.nodes
-            .read()
-            .expect("ExprPool nodes RwLock poisoned")
-            .len()
+        self.nodes.count()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.nodes.is_empty()
     }
 
     // -----------------------------------------------------------------------
@@ -296,8 +293,6 @@ pub struct ExprDisplay<'a> {
 
 impl fmt::Display for ExprDisplay<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Clone to release the lock before recursing; recursive display would
-        // deadlock if the lock were held across child format calls.
         let data = self.pool.get(self.id);
         fmt_data(&data, self.pool, f)
     }
