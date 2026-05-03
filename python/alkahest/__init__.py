@@ -175,6 +175,14 @@ except ImportError:
     )
 from .exceptions import ParseError, SolverError  # noqa: F401  (pure-Python only for now)
 
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _meta_version
+
+try:
+    __version__ = _meta_version("alkahest")
+except _PackageNotFoundError:
+    __version__ = "unknown"
+
 
 def numpy_eval(compiled_fn, *arrays):
     """Vectorised evaluation of a :class:`CompiledFn` over arrays.
@@ -235,6 +243,7 @@ def numpy_eval(compiled_fn, *arrays):
 
 
 __all__ = [
+    "__version__",
     # Exceptions (V1-3 — stable diagnostic codes)
     "AlkahestError",
     "AlkahestError",
