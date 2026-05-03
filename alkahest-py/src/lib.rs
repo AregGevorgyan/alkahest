@@ -2,7 +2,6 @@ use alkahest_core::{
     adjoint_system as core_adjoint_system,
     // Phase 21 — JIT
     compile as core_compile,
-    jit_available as core_jit_available,
     emit_horner_c as core_emit_horner_c,
     emit_stablehlo as core_emit_stablehlo,
     eval_interp as core_eval_interp,
@@ -10,6 +9,7 @@ use alkahest_core::{
     // Phase 24 — Horner form
     horner as core_horner,
     jacobian as core_jacobian,
+    jit_available as core_jit_available,
     lower_to_first_order as core_lower_to_first_order,
     pantelides as core_pantelides,
     // Phase 27 — poly_normal

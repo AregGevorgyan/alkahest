@@ -62,9 +62,9 @@ mod backend {
             Node::Add(args) => {
                 // Binary left-fold; the parser flattens this back to n-ary.
                 let mut it = args.into_iter();
-                let first = it
-                    .next()
-                    .expect("Add node must have at least one argument — ExprPool invariant violated");
+                let first = it.next().expect(
+                    "Add node must have at least one argument — ExprPool invariant violated",
+                );
                 let init = expr_to_egglog(first, pool);
                 it.fold(init, |acc, id| {
                     format!("(Add {acc} {})", expr_to_egglog(id, pool))
@@ -72,9 +72,9 @@ mod backend {
             }
             Node::Mul(args) => {
                 let mut it = args.into_iter();
-                let first = it
-                    .next()
-                    .expect("Mul node must have at least one argument — ExprPool invariant violated");
+                let first = it.next().expect(
+                    "Mul node must have at least one argument — ExprPool invariant violated",
+                );
                 let init = expr_to_egglog(first, pool);
                 it.fold(init, |acc, id| {
                     format!("(Mul {acc} {})", expr_to_egglog(id, pool))
