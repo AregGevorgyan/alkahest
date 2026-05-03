@@ -7,9 +7,8 @@ name: ci-cross
 #   jit excluded on Windows: inkwell pins LLVM 15; MSYS2 currently ships LLVM 17+.
 #   Revisit when inkwell adds an LLVM 17 feature flag.
 #
-# Windows cargo steps use `shell: msys2 {0}` so that gmp-mpfr-sys (which
-# always builds GMP from source on Windows) has access to sh, m4, make, and
-# the rest of the POSIX build toolchain without PATH translation issues.
+# Windows cargo steps use `shell: msys2 {0}` so bundled GMP/MPFR builds and
+# the MinGW toolchain are on PATH (same rationale as `release.yml`).
 
 on:
   pull_request:
@@ -33,18 +32,14 @@ jobs:
             rust_toolchain: stable
             features: "parallel egraph jit"
             python: true
+          # MSVC host Rust + gnu target matches `release.yml` wheel builds.
+          # Native `*-windows-gnu` rustc makes HOST==TARGET so gmp-mpfr-sys runs
+          # GMP's `make check`, which flakes on GitHub's MinGW; cross-building
+          # skips those upstream tests while still compiling the same artefact.
           - os: windows-2022
-            # GNU toolchain required: gmp-mpfr-sys (used by rug) does not
-            # support the MSVC target.
-            rust_toolchain: stable-x86_64-pc-windows-gnu
+            rust_toolchain: stable
             features: "parallel egraph"
             python: false
-            # gmp-mpfr-sys 1.7.0 builds GMP from bundled source on Windows and
-            # then runs `make check`.  GMP's test suite has known failures on
-            # Windows MinGW CI environments (unrelated to library correctness).
-            # continue-on-error until we upgrade to a rug/gmp-mpfr-sys version
-            # that skips `make check` or supports system GMP on Windows.
-            continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +49,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust_toolchain }}
+
+      - name: Add GNU Rust target (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: rustup target add x86_64-pc-windows-gnu
 
       # ── Platform dependencies ────────────────────────────────────────────────
       - name: Install FLINT (macOS)
@@ -74,13 +74,12 @@ jobs:
           msystem: MINGW64
           update: true
           path-type: inherit
-          # flint pulls in gmp, mpfr, mpc as dependencies.
-          # m4 + make are required by gmp-mpfr-sys, which always builds GMP
-          # from bundled source on Windows.
+          # Match `release.yml`: full POSIX toolchain + flint (+ gmp/mpfr via deps).
           install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
             mingw-w64-x86_64-flint
-            m4
-            make
+            mingw-w64-x86_64-pkg-config
 
       # ── Cargo cache ──────────────────────────────────────────────────────────
       - name: Cache Cargo registry
@@ -107,22 +106,20 @@ jobs:
         run: cargo test -p alkahest-core --features "${{ matrix.features }}"
 
       # ── Rust build + test (Windows, inside MSYS2 shell) ─────────────────────
-      # Running inside msys2 {0} gives gmp-mpfr-sys access to sh, m4, make
-      # without Windows PATH translation issues.
       - name: cargo build (no-default-features baseline) [Windows]
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: cargo build -p alkahest-core --no-default-features
+        run: cargo build -p alkahest-core --no-default-features --target x86_64-pc-windows-gnu
 
       - name: cargo build (${{ matrix.features }}) [Windows]
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: cargo build -p alkahest-core --features "${{ matrix.features }}"
+        run: cargo build -p alkahest-core --features "${{ matrix.features }}" --target x86_64-pc-windows-gnu
 
       - name: cargo test (${{ matrix.features }}) [Windows]
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: cargo test -p alkahest-core --features "${{ matrix.features }}"
+        run: cargo test -p alkahest-core --features "${{ matrix.features }}" --target x86_64-pc-windows-gnu
 
       # ── Python tests (macOS only) ────────────────────────────────────────────
       - name: Install Python

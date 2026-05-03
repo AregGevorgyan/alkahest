@@ -20,6 +20,7 @@ dependencies = [
  "cudarc",
  "dashmap",
  "egglog",
+ "gmp-mpfr-sys",
  "inkwell",
  "proptest",
  "rayon",

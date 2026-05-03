@@ -173,10 +173,11 @@ except ImportError:
         OdeError,
         PoolError,
     )
-from .exceptions import ParseError, SolverError  # noqa: F401  (pure-Python only for now)
 
 from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
 from importlib.metadata import version as _meta_version
+
+from .exceptions import ParseError, SolverError  # noqa: F401  (pure-Python only for now)
 
 try:
     __version__ = _meta_version("alkahest")
