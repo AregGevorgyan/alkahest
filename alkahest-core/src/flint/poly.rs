@@ -150,6 +150,33 @@ impl FlintPoly {
         unsafe { ffi::fmpz_poly_get_coeff_fmpz(c.inner_mut_ptr(), &self.inner, n as ffi::slong) };
         c
     }
+
+    /// Formal derivative: `d/dx [c₀ + c₁x + … + cₙxⁿ] = c₁ + 2c₂x + … + ncₙxⁿ⁻¹`.
+    pub fn derivative(&self) -> Self {
+        let deg = self.degree();
+        if deg <= 0 {
+            return Self::new();
+        }
+        let mut result = Self::new();
+        for i in 1..=deg as usize {
+            let fi = self.get_coeff_flint(i);
+            let c = fi.to_rug() * i as i64;
+            let fc = super::integer::FlintInteger::from_rug(&c);
+            result.set_coeff_flint(i - 1, &fc);
+        }
+        result
+    }
+
+    /// Construct a polynomial from a slice of [`rug::Integer`] coefficients
+    /// in ascending degree order.
+    pub fn from_rug_coefficients(coeffs: &[rug::Integer]) -> Self {
+        let mut p = Self::new();
+        for (i, c) in coeffs.iter().enumerate() {
+            let fi = super::integer::FlintInteger::from_rug(c);
+            p.set_coeff_flint(i, &fi);
+        }
+        p
+    }
 }
 
 impl Default for FlintPoly {

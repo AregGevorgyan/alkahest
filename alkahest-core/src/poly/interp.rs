@@ -163,12 +163,20 @@ fn mul_mod(a: u64, b: u64, p: u64) -> u64 {
 #[inline]
 fn add_mod(a: u64, b: u64, p: u64) -> u64 {
     let s = a + b;
-    if s >= p { s - p } else { s }
+    if s >= p {
+        s - p
+    } else {
+        s
+    }
 }
 
 #[inline]
 fn sub_mod(a: u64, b: u64, p: u64) -> u64 {
-    if a >= b { a - b } else { a + p - b }
+    if a >= b {
+        a - b
+    } else {
+        a + p - b
+    }
 }
 
 fn pow_mod(mut base: u64, mut exp: u64, p: u64) -> u64 {
@@ -401,11 +409,7 @@ fn vandermonde_solve(pts: &[u64], exps: &[u32], vals: &[u64], p: u64) -> Option<
 
     // Build the t×t matrix A where A[i][j] = pts[i]^exps[j]
     let mut mat: Vec<Vec<u64>> = (0..t)
-        .map(|i| {
-            (0..t)
-                .map(|j| pow_mod(pts[i], exps[j] as u64, p))
-                .collect()
-        })
+        .map(|i| (0..t).map(|j| pow_mod(pts[i], exps[j] as u64, p)).collect())
         .collect();
     let mut rhs: Vec<u64> = vals.to_vec();
 
@@ -517,12 +521,10 @@ fn bt_univariate(
     //   exps[j] = e_j  (j-th monomial exponent)
     //   vals[i] = s[i]  (i-th sequence value)
     // This is the correct generalised-Vandermonde formulation.
-    let pts_for_vdm: Vec<u64> = (0..ell)
-        .map(|i| pow_mod(g, i as u64, prime))
-        .collect();
+    let pts_for_vdm: Vec<u64> = (0..ell).map(|i| pow_mod(g, i as u64, prime)).collect();
     let vals_for_vdm: Vec<u64> = seq[..ell].to_vec();
-    let coeffs =
-        vandermonde_solve(&pts_for_vdm, &exps, &vals_for_vdm, prime).ok_or(SparseInterpError::SingularSystem)?;
+    let coeffs = vandermonde_solve(&pts_for_vdm, &exps, &vals_for_vdm, prime)
+        .ok_or(SparseInterpError::SingularSystem)?;
 
     Ok(coeffs
         .into_iter()
@@ -849,11 +851,7 @@ mod tests {
             // Verify: g^{p-1} = 1 and g^{(p-1)/q} ≠ 1 for each prime q | p-1
             assert_eq!(pow_mod(g, p - 1, p), 1, "g^(p-1)=1 for p={p}");
             for q in prime_factors(p - 1) {
-                assert_ne!(
-                    pow_mod(g, (p - 1) / q, p),
-                    1,
-                    "g^((p-1)/{q}) ≠ 1 for p={p}"
-                );
+                assert_ne!(pow_mod(g, (p - 1) / q, p), 1, "g^((p-1)/{q}) ≠ 1 for p={p}");
             }
         }
     }
@@ -878,7 +876,13 @@ mod tests {
         // s[n] = 3·2^n + 5·3^n  mod 11
         let p = 11u64;
         let seq: Vec<u64> = (0..4)
-            .map(|n| add_mod(mul_mod(3, pow_mod(2, n, p), p), mul_mod(5, pow_mod(3, n, p), p), p))
+            .map(|n| {
+                add_mod(
+                    mul_mod(3, pow_mod(2, n, p), p),
+                    mul_mod(5, pow_mod(3, n, p), p),
+                    p,
+                )
+            })
             .collect();
         let lambda = berlekamp_massey(&seq, p);
         assert_eq!(lambda.len() - 1, 2, "two-term sequence has LFSR length 2");
@@ -900,7 +904,11 @@ mod tests {
         for e in 0..p - 1 {
             let target = pow_mod(g, e, p);
             let found = bsgs_dlog(g, target, p).expect("dlog should succeed");
-            assert_eq!(pow_mod(g, found, p), target, "g^{found} ≠ {target} for p={p}");
+            assert_eq!(
+                pow_mod(g, found, p),
+                target,
+                "g^{found} ≠ {target} for p={p}"
+            );
         }
     }
 
@@ -966,9 +974,18 @@ mod tests {
         let mut sorted = terms.clone();
         sorted.sort_by_key(|&(_, e)| e);
         // Expect: [(5,0), (3,17), (1,100)]
-        assert!(sorted.iter().any(|&(c, e)| c == 5 && e == 0), "missing constant 5");
-        assert!(sorted.iter().any(|&(c, e)| c == 3 && e == 17), "missing 3·x^17");
-        assert!(sorted.iter().any(|&(c, e)| c == 1 && e == 100), "missing x^100");
+        assert!(
+            sorted.iter().any(|&(c, e)| c == 5 && e == 0),
+            "missing constant 5"
+        );
+        assert!(
+            sorted.iter().any(|&(c, e)| c == 3 && e == 17),
+            "missing 3·x^17"
+        );
+        assert!(
+            sorted.iter().any(|&(c, e)| c == 1 && e == 100),
+            "missing x^100"
+        );
     }
 
     #[test]
@@ -983,7 +1000,10 @@ mod tests {
         let err = sparse_interpolate_univariate(&|_| 0, 10, 19);
         assert!(matches!(
             err,
-            Err(SparseInterpError::PrimeTooSmall { prime: 19, term_bound: 10 })
+            Err(SparseInterpError::PrimeTooSmall {
+                prime: 19,
+                term_bound: 10
+            })
         ));
     }
 
@@ -1021,7 +1041,11 @@ mod tests {
         let eval = |pt: &[u64]| add_mod(mul_mod(pt[0], pt[1], p), 3, p);
         let result = sparse_interpolate(&eval, vs, 4, 5, p, 1).unwrap();
         // Expect: {[1,1]→1, []→3} (or [0,0]→3)
-        assert_eq!(*result.terms.get(&vec![1, 1]).unwrap_or(&0), 1u64, "x*y coeff");
+        assert_eq!(
+            *result.terms.get(&vec![1, 1]).unwrap_or(&0),
+            1u64,
+            "x*y coeff"
+        );
         assert_eq!(*result.terms.get(&vec![]).unwrap_or(&0), 3u64, "constant");
     }
 

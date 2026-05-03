@@ -44,8 +44,9 @@ pub use ode::{
 };
 pub use pattern::{match_pattern, Pattern, Substitution};
 pub use poly::{
-    poly_normal, resultant, sparse_interpolate, sparse_interpolate_univariate, subresultant_prs,
-    ConversionError, MultiPoly, RationalFunction, ResultantError, SparseInterpError, UniPoly,
+    poly_normal, real_roots, real_roots_symbolic, refine_root, resultant, sparse_interpolate,
+    sparse_interpolate_univariate, subresultant_prs, ConversionError, MultiPoly, RationalFunction,
+    RealRootError, ResultantError, RootInterval, SparseInterpError, UniPoly,
 };
 
 // Phase 24 — Horner form
@@ -118,9 +119,9 @@ pub mod stable {
     pub use crate::ode::{lower_to_first_order, OdeError, ScalarODE, ODE};
     pub use crate::pattern::{match_pattern, Pattern, Substitution};
     pub use crate::poly::{
-        poly_normal, resultant, sparse_interpolate, sparse_interpolate_univariate,
-        subresultant_prs, ConversionError, MultiPoly, RationalFunction, ResultantError,
-        SparseInterpError, UniPoly,
+        poly_normal, real_roots, real_roots_symbolic, refine_root, resultant, sparse_interpolate,
+        sparse_interpolate_univariate, subresultant_prs, ConversionError, MultiPoly,
+        RationalFunction, RealRootError, ResultantError, RootInterval, SparseInterpError, UniPoly,
     };
     pub use crate::primitive::{Primitive, PrimitiveRegistry};
     pub use crate::simplify::{simplify, simplify_with, SimplifyConfig};
@@ -145,12 +146,10 @@ pub mod experimental {
         select_lucky_prime, ModularError, ModularValue, MultiPolyFp,
     };
     // V2-3 — Sparse interpolation
-    pub use crate::poly::{
-        sparse_interpolate, sparse_interpolate_univariate, SparseInterpError,
-    };
     pub use crate::ode::sensitivity::{
         adjoint_system, sensitivity_system, AdjointSystem, SensitivitySystem,
     };
+    pub use crate::poly::{sparse_interpolate, sparse_interpolate_univariate, SparseInterpError};
     pub use crate::simplify::{simplify_egraph, simplify_expanded};
     pub use crate::stablehlo::emit_stablehlo;
 

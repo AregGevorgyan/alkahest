@@ -5,6 +5,8 @@ pub mod multipoly;
 pub mod rational;
 // V2-2 — Resultants and subresultant PRS
 pub mod resultant;
+// V2-4 — Real root isolation (VAS)
+pub mod real_roots;
 pub mod unipoly;
 
 #[cfg(feature = "groebner")]
@@ -20,6 +22,8 @@ pub use multipoly::MultiPoly;
 pub use rational::RationalFunction;
 // V2-2 — Resultants and subresultant PRS
 pub use resultant::{resultant, subresultant_prs, ResultantError};
+// V2-4 — Real root isolation (VAS)
+pub use real_roots::{real_roots, real_roots_symbolic, refine_root, RealRootError, RootInterval};
 pub use unipoly::UniPoly;
 
 use crate::kernel::{ExprId, ExprPool};

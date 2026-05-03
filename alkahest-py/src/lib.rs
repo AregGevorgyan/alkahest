@@ -13,6 +13,9 @@ use alkahest_core::{
     pantelides as core_pantelides,
     // Phase 27 — poly_normal
     poly_normal as core_poly_normal,
+    // V2-4 — Real root isolation
+    real_roots_symbolic as core_real_roots_symbolic,
+    refine_root as core_refine_root,
     resistor as core_resistor,
     // V2-2 — Resultants and subresultant PRS
     resultant as core_resultant,
@@ -39,7 +42,9 @@ use alkahest_core::{
     Port,
     PrimitiveRegistry,
     RationalFunction,
+    RealRootError,
     RewriteRule,
+    RootInterval as CoreRootInterval,
     ScalarODE,
     System as AcausalSystem,
     UniPoly,
@@ -94,6 +99,8 @@ pyo3::create_exception!(alkahest, PyParseError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyResultantError, PyAlkahestError);
 // V2-3 — Sparse interpolation
 pyo3::create_exception!(alkahest, PySparseInterpError, PyAlkahestError);
+// V2-4 — Real root isolation
+pyo3::create_exception!(alkahest, PyRealRootError, PyAlkahestError);
 
 /// Build a structured exception with `.code`, `.remediation`, `.span` attributes.
 fn make_structured_err<E: AlkahestErrorTrait>(
@@ -177,6 +184,13 @@ fn resultant_error_to_py(e: ResultantError) -> PyErr {
 fn sparse_interp_error_to_py(e: SparseInterpError) -> PyErr {
     Python::with_gil(|py| {
         let exc_type = py.get_type_bound::<PySparseInterpError>();
+        make_structured_err(py, &exc_type, &e)
+    })
+}
+
+fn real_root_error_to_py(e: RealRootError) -> PyErr {
+    Python::with_gil(|py| {
+        let exc_type = py.get_type_bound::<PyRealRootError>();
         make_structured_err(py, &exc_type, &e)
     })
 }
@@ -2648,6 +2662,146 @@ fn py_subresultant_prs(
 }
 
 // ---------------------------------------------------------------------------
+// V2-4 — Real root isolation Python bindings
+// ---------------------------------------------------------------------------
+
+/// A closed rational interval `[lo, hi]` isolating exactly one real root.
+///
+/// For an exact rational root `r`, ``lo == hi == r``.
+#[pyclass(name = "RootInterval", module = "alkahest")]
+struct PyRootInterval {
+    inner: CoreRootInterval,
+}
+
+#[pymethods]
+impl PyRootInterval {
+    /// Lower bound as a float (may be slightly inexact).
+    #[getter]
+    fn lo(&self) -> f64 {
+        self.inner.lo_f64()
+    }
+
+    /// Upper bound as a float (may be slightly inexact).
+    #[getter]
+    fn hi(&self) -> f64 {
+        self.inner.hi_f64()
+    }
+
+    /// Exact lower bound as ``(numerator_str, denominator_str)``.
+    fn lo_exact(&self) -> (String, String) {
+        self.inner.lo_exact()
+    }
+
+    /// Exact upper bound as ``(numerator_str, denominator_str)``.
+    fn hi_exact(&self) -> (String, String) {
+        self.inner.hi_exact()
+    }
+
+    fn __repr__(&self) -> String {
+        let lo = self.inner.lo_f64();
+        let hi = self.inner.hi_f64();
+        if lo == hi {
+            format!("RootInterval({lo})")
+        } else {
+            format!("RootInterval({lo}, {hi})")
+        }
+    }
+
+    fn __str__(&self) -> String {
+        self.__repr__()
+    }
+}
+
+fn core_interval_to_py(iv: CoreRootInterval) -> PyRootInterval {
+    PyRootInterval { inner: iv }
+}
+
+/// Isolate all real roots of a polynomial expression.
+///
+/// Returns a list of :class:`RootInterval` objects sorted by lower endpoint.
+/// Each interval contains exactly one real root of the squarefree part of
+/// ``poly``.  Repeated roots appear once each.
+///
+/// Parameters
+/// ----------
+/// poly : Expr
+///     A univariate polynomial expression with integer coefficients.
+/// var : Expr
+///     The polynomial variable.
+///
+/// Returns
+/// -------
+/// list[RootInterval]
+///
+/// Raises
+/// ------
+/// RealRootError
+///     If ``poly`` is not a polynomial with integer coefficients, or is the
+///     zero polynomial.
+///
+/// Example::
+///
+///     pool = ExprPool()
+///     x = pool.symbol("x")
+///     roots = real_roots(x**2 - pool.integer(4), x)
+///     # roots ≈ [RootInterval(-2.0, -2.0), RootInterval(2.0, 2.0)]
+#[pyfunction]
+#[pyo3(name = "real_roots")]
+fn py_real_roots(
+    py: Python<'_>,
+    poly: PyRef<PyExpr>,
+    var: PyRef<PyExpr>,
+) -> PyResult<Vec<PyRootInterval>> {
+    let pool = poly.pool.borrow(py);
+    let intervals =
+        core_real_roots_symbolic(poly.id, var.id, &pool.inner).map_err(real_root_error_to_py)?;
+    Ok(intervals.into_iter().map(core_interval_to_py).collect())
+}
+
+/// Refine a :class:`RootInterval` to at least ``prec`` bits of precision.
+///
+/// Uses bisection with floating-point Horner evaluation.  For exact rational
+/// roots (``lo == hi``), returns a zero-radius ball.
+///
+/// Parameters
+/// ----------
+/// poly : Expr
+///     The same polynomial passed to :func:`real_roots`.
+/// interval : RootInterval
+///     One element of the list returned by :func:`real_roots`.
+/// var : Expr
+///     The polynomial variable.
+/// prec : int
+///     Desired precision in bits (minimum 53, clamped to ``max(53, prec)``).
+///
+/// Returns
+/// -------
+/// ArbBall
+///     Rigorous floating-point ball containing the root.
+///
+/// Example::
+///
+///     pool = ExprPool()
+///     x = pool.symbol("x")
+///     ivs = real_roots(x**2 - pool.integer(2), x)
+///     ball = refine_root(x**2 - pool.integer(2), ivs[1], x, 53)
+///     # ball.mid ≈ 1.4142135623730951
+#[pyfunction]
+#[pyo3(name = "refine_root")]
+fn py_refine_root(
+    py: Python<'_>,
+    poly: PyRef<PyExpr>,
+    interval: PyRef<PyRootInterval>,
+    var: PyRef<PyExpr>,
+) -> PyResult<PyArbBall> {
+    let pool = poly.pool.borrow(py);
+    let uni = UniPoly::from_symbolic(poly.id, var.id, &pool.inner)
+        .map_err(|e| real_root_error_to_py(RealRootError::NotAPolynomial(e)))?;
+    let ball = core_refine_root(&uni, &interval.inner, 53);
+    Ok(PyArbBall { inner: ball })
+}
+
+// ---------------------------------------------------------------------------
 // V2-3 — Sparse interpolation Python bindings
 // ---------------------------------------------------------------------------
 
@@ -2692,8 +2846,12 @@ fn py_sparse_interp_univariate(
     prime: u64,
 ) -> PyResult<Vec<(u64, u32)>> {
     let rust_eval = |x: u64| -> u64 {
-        let result = eval.call1((x,)).expect("sparse_interp_univariate: oracle call failed");
-        result.extract::<u64>().expect("sparse_interp_univariate: oracle must return int")
+        let result = eval
+            .call1((x,))
+            .expect("sparse_interp_univariate: oracle call failed");
+        result
+            .extract::<u64>()
+            .expect("sparse_interp_univariate: oracle must return int")
     };
     let terms = core_sparse_interpolate_univariate(&rust_eval, term_bound, prime)
         .map_err(sparse_interp_error_to_py)?;
@@ -2765,7 +2923,9 @@ fn py_sparse_interp(
         let result = eval
             .call1((py_list,))
             .expect("sparse_interp: oracle call failed");
-        result.extract::<u64>().expect("sparse_interp: oracle must return int")
+        result
+            .extract::<u64>()
+            .expect("sparse_interp: oracle must return int")
     };
 
     let fp = core_sparse_interpolate(&rust_eval, var_ids, term_bound, degree_bound, prime, seed)
@@ -3471,6 +3631,10 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // V2-3 — Sparse interpolation
     m.add_function(wrap_pyfunction!(py_sparse_interp_univariate, m)?)?;
     m.add_function(wrap_pyfunction!(py_sparse_interp, m)?)?;
+    // V2-4 — Real root isolation
+    m.add_class::<PyRootInterval>()?;
+    m.add_function(wrap_pyfunction!(py_real_roots, m)?)?;
+    m.add_function(wrap_pyfunction!(py_refine_root, m)?)?;
     // V2-1 — Modular / CRT framework
     m.add_class::<PyMultiPolyFp>()?;
     m.add_function(wrap_pyfunction!(py_modular_reduce, m)?)?;
@@ -3508,6 +3672,7 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "SparseInterpError",
         m.py().get_type_bound::<PySparseInterpError>(),
     )?;
+    m.add("RealRootError", m.py().get_type_bound::<PyRealRootError>())?;
     // V1-15: compile-time flag so Python tests can skip egraph-dependent assertions.
     m.add("HAS_EGRAPH", cfg!(feature = "egraph"))?;
     Ok(())

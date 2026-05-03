@@ -58,6 +58,8 @@ from .alkahest import (  # noqa: F401
     RationalFunction,
     # Rewrite rules
     RewriteRule,
+    # V2-4: Real root isolation (VAS)
+    RootInterval,
     # Phase 19: Sensitivity analysis
     SensitivitySystem,
     UniPoly,
@@ -100,13 +102,12 @@ from .alkahest import (  # noqa: F401
     piecewise,
     # Phase 27: poly_normal
     poly_normal,
+    real_roots,
+    refine_root,
     resistor,
     # V2-2: Resultants and subresultant PRS
     resultant,
     round,  # symbolic round — use alkahest.round(expr)
-    # V2-3: Sparse interpolation
-    sparse_interp,
-    sparse_interp_univariate,
     sensitivity_system,
     sign,
     simplify,
@@ -120,6 +121,9 @@ from .alkahest import (  # noqa: F401
     simplify_with,
     sin,
     sinh,
+    # V2-3: Sparse interpolation
+    sparse_interp,
+    sparse_interp_univariate,
     sqrt,
     subresultant_prs,
     subs,
@@ -168,6 +172,7 @@ try:
         MatrixError,
         OdeError,
         PoolError,
+        RealRootError,
         ResultantError,
         SparseInterpError,
     )
@@ -356,6 +361,11 @@ __all__ = [
     "sparse_interp",
     "sparse_interp_univariate",
     "SparseInterpError",
+    # V2-4
+    "real_roots",
+    "refine_root",
+    "RootInterval",
+    "RealRootError",
     # PA-5
     "PrimitiveRegistry",
     # PA-7
