@@ -318,7 +318,7 @@ impl RatUniPoly {
         }
     }
 
-    pub(super) fn trim(mut self) -> Self {
+    pub(crate) fn trim(mut self) -> Self {
         while self.coeffs.last() == Some(&Rational::from(0)) {
             self.coeffs.pop();
         }
@@ -333,7 +333,7 @@ impl RatUniPoly {
         self.coeffs.is_empty()
     }
 
-    pub(super) fn leading_coeff(&self) -> Rational {
+    pub(crate) fn leading_coeff(&self) -> Rational {
         self.coeffs
             .last()
             .cloned()

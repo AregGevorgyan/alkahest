@@ -243,6 +243,7 @@ pub fn eval_interp(expr: ExprId, env: &HashMap<ExprId, f64>, pool: &ExprPool) ->
                 "exp" => x.exp(),
                 "log" => x.ln(),
                 "sqrt" => x.sqrt(),
+                "gamma" => rug::Float::with_val(53, x).gamma().to_f64(),
                 "abs" => x.abs(),
                 _ => return None,
             })
@@ -348,6 +349,7 @@ fn eval_interp_snap(expr: ExprId, env: &HashMap<ExprId, f64>, snap: &ExprSnapsho
                 "exp" => x.exp(),
                 "log" => x.ln(),
                 "sqrt" => x.sqrt(),
+                "gamma" => rug::Float::with_val(53, x).gamma().to_f64(),
                 "abs" => x.abs(),
                 _ => return None,
             })

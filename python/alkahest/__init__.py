@@ -99,6 +99,10 @@ from .alkahest import (  # noqa: F401
     # Phase 24: Horner-form code emission
     horner,
     integrate,
+    solve_linear_recurrence_homogeneous,
+    sum_definite,
+    sum_indefinite,
+    verify_wz_pair,
     interval_eval,
     jacobian,
     log,
@@ -192,6 +196,7 @@ try:
         IntegrationError,
         JitError,
         LatticeError,
+        LinearRecurrenceError,
         MatrixError,
         OdeError,
         PoolError,
@@ -199,6 +204,7 @@ try:
         RealRootError,
         ResultantError,
         SparseInterpError,
+        SumError,
     )
 except ImportError:
     from .exceptions import (  # noqa: F401
@@ -211,10 +217,12 @@ except ImportError:
         IntegrationError,
         JitError,
         LatticeError,
+        LinearRecurrenceError,
         MatrixError,
         OdeError,
         PoolError,
         PslqError,
+        SumError,
     )
 from .exceptions import ParseError, SolverError  # noqa: F401  (pure-Python only for now)
 
@@ -285,6 +293,7 @@ __all__ = [
     "DiffError",
     "PoolError",
     "IntegrationError",
+    "LinearRecurrenceError",
     "MatrixError",
     "OdeError",
     "DaeError",
@@ -319,6 +328,10 @@ __all__ = [
     "diff",
     "diff_forward",
     "integrate",
+    "solve_linear_recurrence_homogeneous",
+    "sum_definite",
+    "sum_indefinite",
+    "verify_wz_pair",
     "symbolic_grad",
     # Pattern matching & substitution
     "match_pattern",
@@ -391,6 +404,7 @@ __all__ = [
     "sparse_interp",
     "sparse_interp_univariate",
     "SparseInterpError",
+    "SumError",
     "CadError",
     # V2-6
     "guess_relation",

@@ -4,7 +4,7 @@
 
 ### Features
 
-- **V2-9 CAD / real QE:** `alkahest_core::real::cad` with `cad_project`, `cad_lift`, `decide`, and `CadError`; Python `decide`, `cad_project`, `cad_lift`, and structured `CadError` (`E-CAD-001` for unsupported QE shapes). Covers single `\forall`/`\exists` over one variable with purely polynomial literals (integer coeffs); `\exists x\, (x^2=2)`, `\forall x\, (x^2+1>0)` regressions included.
+- **V2-10 — Creative telescoping / Zeilberger (initial):** Rust `alkahest_core::sum` with Gosper indefinite/definite summation for rational hypergeometric terms built from polynomials and `gamma(linear(k))`, `solve_linear_recurrence_homogeneous` (order ≤ 2), `verify_wz_pair`, and `SumError` (`E-SUM-*`). Python: `sum_indefinite`, `sum_definite`, `solve_linear_recurrence_homogeneous`, `verify_wz_pair`, `SumError`, `LinearRecurrenceError`; `eval_expr` / interpreter gains unary `gamma`. Tests: `tests/test_sum_v210.py`, Rust `sum::*`.
 
 ## 1.0.0
 

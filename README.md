@@ -78,6 +78,25 @@ mp = MultiPoly.from_symbolic(x ** 2 * y + x * y ** 2, [x, y])
 print(mp.total_degree()) # 3
 ```
 
+### Symbolic summation (V2-10 — Gosper / recurrences)
+
+Indefinite and definite sums for terms whose shift ratio `F(k+1)/F(k)` is rational in `k`—typically polynomials multiplied by `gamma` of a **linear** expression in `k`. General multivariate Zeilberger automation is partial; use `verify_wz_pair(F, G, n, k)` to check a discrete telescoping certificate after simplification.
+
+```python
+import alkahest
+
+pool = alkahest.ExprPool()
+k = pool.symbol("k")
+n = pool.symbol("n")
+term = alkahest.simplify(k * alkahest.gamma(k + pool.integer(1))).value
+print(alkahest.sum_indefinite(term, k).value)
+print(alkahest.sum_definite(term, k, pool.integer(0), n).value)
+
+fib = alkahest.solve_linear_recurrence_homogeneous(
+    n, [(-1, 1), (-1, 1), (1, 1)], [pool.integer(0), pool.integer(1)]
+)
+```
+
 ### Rigorous interval arithmetic
 
 ```python

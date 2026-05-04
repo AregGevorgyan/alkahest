@@ -33,7 +33,12 @@ use alkahest_core::{
     sparse_interpolate as core_sparse_interpolate,
     sparse_interpolate_univariate as core_sparse_interpolate_univariate,
     subresultant_prs as core_subresultant_prs,
+    solve_linear_recurrence_homogeneous as core_solve_linear_recurrence_homogeneous,
     subs as core_subs,
+    sum_definite as core_sum_definite,
+    sum_indefinite as core_sum_indefinite,
+    verify_wz_pair as core_verify_wz_pair,
+    WzPair,
     // Phase 22 — Ball arithmetic
     ArbBall as CoreArbBall,
     // V2-9 — CAD / real QE
@@ -84,9 +89,10 @@ use alkahest_core::{
     log_exp_rules, match_pattern as core_match_pattern, simplify as core_simplify,
     simplify_egraph as core_simplify_egraph, simplify_egraph_with as core_simplify_egraph_with,
     simplify_with as core_simplify_with, trig_rules, AlkahestError as AlkahestErrorTrait,
-    DiffError, EgraphConfig, IntegrationError, IoError, PatternRule, ResultantError,
-    SimplifyConfig, SizeCost, SparseInterpError,
+    DiffError, EgraphConfig, IntegrationError, IoError, LinearRecurrenceError, PatternRule,
+    ResultantError, SimplifyConfig, SizeCost, SparseInterpError, SumError,
 };
+use rug::{Integer, Rational};
 use pyo3::exceptions::{PyOverflowError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
@@ -126,6 +132,8 @@ pyo3::create_exception!(alkahest, PyRealRootError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyLatticeError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyPslqError, PyAlkahestError);
 pyo3::create_exception!(alkahest, PyCadError, PyAlkahestError);
+pyo3::create_exception!(alkahest, PySumError, PyAlkahestError);
+pyo3::create_exception!(alkahest, PyLinearRecurrenceError, PyAlkahestError);
 
 /// Build a structured exception with `.code`, `.remediation`, `.span` attributes.
 fn make_structured_err<E: AlkahestErrorTrait>(
@@ -230,6 +238,20 @@ fn real_root_error_to_py(e: RealRootError) -> PyErr {
 fn cad_error_to_py(e: CadError) -> PyErr {
     Python::with_gil(|py| {
         let exc_type = py.get_type_bound::<PyCadError>();
+        make_structured_err(py, &exc_type, &e)
+    })
+}
+
+fn sum_error_to_py(e: SumError) -> PyErr {
+    Python::with_gil(|py| {
+        let exc_type = py.get_type_bound::<PySumError>();
+        make_structured_err(py, &exc_type, &e)
+    })
+}
+
+fn linear_recurrence_error_to_py(e: LinearRecurrenceError) -> PyErr {
+    Python::with_gil(|py| {
+        let exc_type = py.get_type_bound::<PyLinearRecurrenceError>();
         make_structured_err(py, &exc_type, &e)
     })
 }
@@ -1462,6 +1484,77 @@ fn py_integrate(
     };
     let pool_py = expr.pool.clone_ref(py);
     Ok(make_derived_result(py, derived, pool_py))
+}
+
+#[pyfunction]
+#[pyo3(name = "sum_indefinite")]
+fn py_sum_indefinite(
+    py: Python<'_>,
+    expr: PyRef<PyExpr>,
+    k: PyRef<PyExpr>,
+) -> PyResult<PyDerivedResult> {
+    let derived = {
+        let pool = expr.pool.borrow(py);
+        core_sum_indefinite(expr.id, k.id, &pool.inner).map_err(sum_error_to_py)?
+    };
+    Ok(make_derived_result(py, derived, expr.pool.clone_ref(py)))
+}
+
+#[pyfunction]
+#[pyo3(name = "sum_definite")]
+fn py_sum_definite(
+    py: Python<'_>,
+    expr: PyRef<PyExpr>,
+    k: PyRef<PyExpr>,
+    lo: PyRef<PyExpr>,
+    hi: PyRef<PyExpr>,
+) -> PyResult<PyDerivedResult> {
+    let derived = {
+        let pool = expr.pool.borrow(py);
+        core_sum_definite(expr.id, k.id, lo.id, hi.id, &pool.inner).map_err(sum_error_to_py)?
+    };
+    Ok(make_derived_result(py, derived, expr.pool.clone_ref(py)))
+}
+
+#[pyfunction]
+#[pyo3(name = "solve_linear_recurrence_homogeneous")]
+fn py_solve_linear_recurrence_homogeneous(
+    py: Python<'_>,
+    n: PyRef<PyExpr>,
+    coeffs: Vec<(i64, i64)>,
+    initials: Vec<PyRef<PyExpr>>,
+) -> PyResult<PyExpr> {
+    let rat_coeffs: Vec<Rational> = coeffs
+        .into_iter()
+        .map(|(a, b)| Rational::from((Integer::from(a), Integer::from(b))))
+        .collect();
+    let init_ids: Vec<ExprId> = initials.iter().map(|e| e.id).collect();
+    let pool_py = n.pool.clone_ref(py);
+    let closed = {
+        let pool = pool_py.borrow(py);
+        core_solve_linear_recurrence_homogeneous(&pool.inner, n.id, &rat_coeffs, &init_ids)
+            .map_err(linear_recurrence_error_to_py)?
+            .closed_form
+    };
+    Ok(PyExpr {
+        id: closed,
+        pool: pool_py,
+    })
+}
+
+#[pyfunction]
+#[pyo3(name = "verify_wz_pair")]
+fn py_verify_wz_pair(
+    py: Python<'_>,
+    f: PyRef<PyExpr>,
+    g: PyRef<PyExpr>,
+    n: PyRef<PyExpr>,
+    k: PyRef<PyExpr>,
+) -> PyResult<bool> {
+    let _ = py;
+    let pool = f.pool.borrow(py);
+    let pair = WzPair { f: f.id, g: g.id };
+    Ok(core_verify_wz_pair(&pair, n.id, k.id, &pool.inner))
 }
 
 /// `alkahest.match_pattern(pattern_expr, expr) -> list[dict[str, Expr]]`
@@ -3985,6 +4078,10 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_diff, m)?)?;
     m.add_function(wrap_pyfunction!(py_diff_forward, m)?)?;
     m.add_function(wrap_pyfunction!(py_integrate, m)?)?;
+    m.add_function(wrap_pyfunction!(py_sum_indefinite, m)?)?;
+    m.add_function(wrap_pyfunction!(py_sum_definite, m)?)?;
+    m.add_function(wrap_pyfunction!(py_solve_linear_recurrence_homogeneous, m)?)?;
+    m.add_function(wrap_pyfunction!(py_verify_wz_pair, m)?)?;
     m.add_function(wrap_pyfunction!(match_pattern, m)?)?;
     m.add_function(wrap_pyfunction!(make_rule, m)?)?;
     m.add_function(wrap_pyfunction!(py_subs, m)?)?;
@@ -4146,6 +4243,11 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("LatticeError", m.py().get_type_bound::<PyLatticeError>())?;
     m.add("PslqError", m.py().get_type_bound::<PyPslqError>())?;
     m.add("CadError", m.py().get_type_bound::<PyCadError>())?;
+    m.add("SumError", m.py().get_type_bound::<PySumError>())?;
+    m.add(
+        "LinearRecurrenceError",
+        m.py().get_type_bound::<PyLinearRecurrenceError>(),
+    )?;
     // V1-15: compile-time flag so Python tests can skip egraph-dependent assertions.
     m.add("HAS_EGRAPH", cfg!(feature = "egraph"))?;
     Ok(())

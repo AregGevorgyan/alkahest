@@ -28,6 +28,8 @@ pub mod real;
 pub mod simplify;
 #[cfg(feature = "groebner")]
 pub mod solver;
+// V2-10 — Gosper / creative telescoping (WZ certificates)
+pub mod sum;
 pub mod stablehlo;
 
 pub use acausal::{capacitor, resistor, voltage_source, Component, Port, System};
@@ -75,6 +77,11 @@ pub use simplify::{
     rules_for_config, simplify, simplify_egraph, simplify_egraph_with, simplify_expanded,
     simplify_with, DepthCost, EgraphConfig, EgraphCost, OpCost, PatternRule, RewriteRule,
     SimplifyConfig, SizeCost, StabilityCost,
+};
+pub use sum::{
+    gosper_certificate, gosper_normal_form, hypergeom_ratio, solve_linear_recurrence_homogeneous,
+    sum_definite, sum_indefinite, verify_wz_pair, LinearRecurrenceError, RatFunc,
+    RecurrenceSolution, SumError, WzPair,
 };
 
 // Phase 21 — JIT
@@ -158,6 +165,11 @@ pub mod stable {
     pub use crate::primitive::{Primitive, PrimitiveRegistry};
     pub use crate::real::{cad_lift, cad_project, decide, decide_expr, CadError, QeResult};
     pub use crate::simplify::{simplify, simplify_with, SimplifyConfig};
+    pub use crate::sum::{
+        gosper_certificate, gosper_normal_form, hypergeom_ratio, solve_linear_recurrence_homogeneous,
+        sum_definite, sum_indefinite, verify_wz_pair, LinearRecurrenceError, RatFunc,
+        RecurrenceSolution, SumError, WzPair,
+    };
     #[cfg(feature = "groebner")]
     pub use crate::solver::{solve_polynomial_system, Solution, SolutionSet, SolverError};
     pub use crate::version;
