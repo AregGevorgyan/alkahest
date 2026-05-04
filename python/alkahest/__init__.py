@@ -171,7 +171,7 @@ except ImportError:
 
 # V1-4 / V1-16: Polynomial system solver + Gröbner basis (optional — requires groebner feature)
 try:
-    from .alkahest import GbPoly, GroebnerBasis, solve  # noqa: F401
+    from .alkahest import GbPoly, GroebnerBasis, RegularChain, solve, triangularize  # noqa: F401
 except ImportError:
     pass
 
@@ -449,6 +449,9 @@ __all__ = [
     "solve",
     "GroebnerBasis",
     "GbPoly",
+    # V2-11 — Regular chains / triangular decomposition
+    "triangularize",
+    "RegularChain",
     # V1-16: IoError
     "IoError",
     # RW-7

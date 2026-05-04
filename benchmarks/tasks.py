@@ -316,6 +316,41 @@ class SolveCircleLine(BenchTask):
 
 
 # ---------------------------------------------------------------------------
+# Task — V2-11: triangular decomposition proxy (6R IK row name in ROADMAP)
+# ---------------------------------------------------------------------------
+
+
+class Solve6rIk(BenchTask):
+    """Planar ``circle ∩ line`` constraints — proxy for IK-style polynomial solving.
+
+    Full 6R inverse kinematics is not inlined here; the system matches the
+    :class:`SolveCircleLine` structure (two equations, two variables).  The
+    Alkahest path benchmarks :func:`alkahest.triangularize`; SymPy uses a lex
+    Gröbner basis as the comparison decomposition.
+    """
+
+    name = "solve_6r_ik"
+    size_params = [1, 2, 5]
+
+    def run_alkahest(self, size: int) -> Any:
+        import alkahest
+
+        p = alkahest.ExprPool()
+        x = p.symbol("x")
+        y = p.symbol("y")
+        neg_one = p.integer(-1)
+        r2 = p.integer(size * size)
+        eq1 = x**2 + y**2 + neg_one * r2
+        eq2 = y + neg_one * x
+        return alkahest.triangularize([eq1, eq2], [x, y])
+
+    def run_sympy(self, size: int) -> Any:
+        import sympy as sp  # type: ignore[import]
+
+        x, y = sp.symbols("x y")
+        return sp.groebner([x**2 + y**2 - size**2, y - x], y, x, order="lex")
+
+
 # ---------------------------------------------------------------------------
 # Task 9 — V2-3: Sparse interpolation vs dense (univariate)
 # ---------------------------------------------------------------------------
@@ -466,6 +501,7 @@ ALL_TASKS: list[BenchTask] = [
     BallSinCos(),
     ODEJITCompile(),
     SolveCircleLine(),
+    Solve6rIk(),
     SparseInterpVsDense(),
     SparseInterpMultivar(),
 ]

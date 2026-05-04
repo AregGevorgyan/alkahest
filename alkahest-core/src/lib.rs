@@ -114,7 +114,10 @@ pub use modular::{
 };
 pub use primitive::{Capabilities, CoverageReport, CoverageRow, Primitive, PrimitiveRegistry};
 #[cfg(feature = "groebner")]
-pub use solver::{expr_to_gbpoly, solve_polynomial_system, Solution, SolutionSet, SolverError};
+pub use solver::{
+    expr_to_gbpoly, extract_regular_chain_from_basis, main_variable_recursive,
+    solve_polynomial_system, triangularize, RegularChain, Solution, SolutionSet, SolverError,
+};
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -171,7 +174,10 @@ pub mod stable {
         RecurrenceSolution, SumError, WzPair,
     };
     #[cfg(feature = "groebner")]
-    pub use crate::solver::{solve_polynomial_system, Solution, SolutionSet, SolverError};
+    pub use crate::solver::{
+        expr_to_gbpoly, extract_regular_chain_from_basis, main_variable_recursive,
+        solve_polynomial_system, triangularize, RegularChain, Solution, SolutionSet, SolverError,
+    };
     pub use crate::version;
 }
 

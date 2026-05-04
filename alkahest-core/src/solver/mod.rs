@@ -1,12 +1,19 @@
 //! Polynomial system solver via Gröbner bases.
 //!
+//! # V2-11 — Regular chains
+//!
+//! [`regular_chains::triangularize`] exposes a Lex-basis triangular decomposition
+//! (with optional bottom-variable factor splitting).  On a triangular back-sub
+//! stall, [`solve_polynomial_system`] retries using an extracted regular chain
+//! from the same Gröbner basis.
+//!
 //! # V1-4
 //!
 //! `solve_polynomial_system(eqs, vars)` takes a list of polynomial equations
 //! (given as `ExprId` representing `lhs - rhs = 0`) and a list of variables,
 //! and returns exact symbolic solutions as `ExprId` trees.
 //!
-//! # Strategy
+//! ## Strategy
 //!
 //! 1. Convert each equation to `GbPoly` (rational coefficients) under the Lex order.
 //! 2. Compute a Gröbner basis under `Lex`.  Lex-order Gröbner bases are
@@ -26,6 +33,12 @@
 //! `SolutionSet::Parametric(basis)` if the Gröbner basis is not triangular
 //! enough to back-substitute (infinite families), or `SolutionSet::NoSolution`
 //! when the ideal is trivial (= ⟨1⟩).
+
+pub mod regular_chains;
+
+pub use regular_chains::{
+    extract_regular_chain_from_basis, main_variable_recursive, RegularChain, triangularize,
+};
 
 use crate::errors::AlkahestError;
 use crate::kernel::{ExprData, ExprId, ExprPool};
@@ -502,6 +515,65 @@ fn find_solvable<'a>(
     None
 }
 
+/// Lex-order backsolve over a fixed generator list (full Gröbner basis or a
+/// triangular subset).
+enum BacksolveOutcome {
+    Finite(Vec<Solution>),
+    /// No triangular step applied (`find_solvable` stuck) — caller may retry a smaller set.
+    Stuck,
+    NoSolution,
+}
+
+fn try_backsolve_generators(
+    gens: &[GbPoly],
+    vars: &[ExprId],
+    pool: &ExprPool,
+) -> Result<BacksolveOutcome, SolverError> {
+    let n_vars = vars.len();
+    let mut partials: Vec<Vec<Option<ExprId>>> = vec![vec![None; n_vars]];
+
+    for _ in 0..n_vars {
+        let mut new_partials = Vec::new();
+        for partial in &partials {
+            let solvable = find_solvable(gens, partial, n_vars);
+            let (var_idx, gen, max_deg) = match solvable {
+                Some(t) => t,
+                None => return Ok(BacksolveOutcome::Stuck),
+            };
+            if max_deg > 2 {
+                return Err(SolverError::HighDegree(max_deg as usize));
+            }
+            let coeffs: Vec<ExprId> = (0..=max_deg)
+                .map(|k| extract_coeff_in_var(gen, var_idx, k, vars, partial, pool))
+                .collect();
+            let roots = solve_univariate_symbolic(&coeffs, pool)?;
+            if roots.is_empty() {
+                continue;
+            }
+            for root in roots {
+                let mut np = partial.clone();
+                np[var_idx] = Some(root);
+                new_partials.push(np);
+            }
+        }
+        partials = new_partials;
+        if partials.is_empty() {
+            return Ok(BacksolveOutcome::NoSolution);
+        }
+    }
+
+    let solutions: Vec<Solution> = partials
+        .into_iter()
+        .map(|p| {
+            p.into_iter()
+                .map(|o| o.expect("all vars assigned"))
+                .collect()
+        })
+        .collect();
+
+    Ok(BacksolveOutcome::Finite(solutions))
+}
+
 /// Solve a zero-dimensional polynomial system.
 ///
 /// `equations` — list of `ExprId` each representing `p(vars) = 0`.
@@ -531,50 +603,20 @@ pub fn solve_polynomial_system(
         return Ok(SolutionSet::NoSolution);
     }
 
-    // Triangular back-substitution.
-    let mut partials: Vec<Vec<Option<ExprId>>> = vec![vec![None; n_vars]];
-
-    for _ in 0..n_vars {
-        let mut new_partials = Vec::new();
-        for partial in &partials {
-            let solvable = find_solvable(gens, partial, n_vars);
-            let (var_idx, gen, max_deg) = match solvable {
-                Some(t) => t,
-                None => return Ok(SolutionSet::Parametric(gb)),
-            };
-            if max_deg > 2 {
-                return Err(SolverError::HighDegree(max_deg as usize));
+    match try_backsolve_generators(gens, &vars, pool)? {
+        BacksolveOutcome::Finite(solutions) => Ok(SolutionSet::Finite(solutions)),
+        BacksolveOutcome::NoSolution => Ok(SolutionSet::NoSolution),
+        BacksolveOutcome::Stuck => {
+            let chain = extract_regular_chain_from_basis(gens, n_vars, MonomialOrder::Lex);
+            if chain.polys.is_empty() {
+                return Ok(SolutionSet::Parametric(gb));
             }
-            let coeffs: Vec<ExprId> = (0..=max_deg)
-                .map(|k| extract_coeff_in_var(gen, var_idx, k, &vars, partial, pool))
-                .collect();
-            let roots = solve_univariate_symbolic(&coeffs, pool)?;
-            if roots.is_empty() {
-                // Contradiction — this branch of the partial assignment dies.
-                continue;
+            match try_backsolve_generators(&chain.polys, &vars, pool)? {
+                BacksolveOutcome::Finite(solutions) => Ok(SolutionSet::Finite(solutions)),
+                _ => Ok(SolutionSet::Parametric(gb)),
             }
-            for root in roots {
-                let mut np = partial.clone();
-                np[var_idx] = Some(root);
-                new_partials.push(np);
-            }
-        }
-        partials = new_partials;
-        if partials.is_empty() {
-            return Ok(SolutionSet::NoSolution);
         }
     }
-
-    let solutions: Vec<Solution> = partials
-        .into_iter()
-        .map(|p| {
-            p.into_iter()
-                .map(|o| o.expect("all vars assigned"))
-                .collect()
-        })
-        .collect();
-
-    Ok(SolutionSet::Finite(solutions))
 }
 
 // ---------------------------------------------------------------------------

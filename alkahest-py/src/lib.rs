@@ -3753,7 +3753,7 @@ impl PyGroebnerBasis {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "groebner")]
-use alkahest_core::{solve_polynomial_system, SolutionSet};
+use alkahest_core::{solve_polynomial_system, SolutionSet, RegularChain, triangularize};
 
 /// `alkahest.solve(equations, vars, *, numeric=False) -> list[dict] | GroebnerBasis | list`
 ///
@@ -3839,6 +3839,86 @@ fn py_solve(
                     }
                 }
                 list.append(d)?;
+            }
+            Ok(list.into())
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// V2-11 — Regular chains / triangular decomposition
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "groebner")]
+#[pyclass(name = "RegularChain")]
+struct PyRegularChain {
+    inner: RegularChain,
+}
+
+#[cfg(feature = "groebner")]
+#[pymethods]
+impl PyRegularChain {
+    #[getter]
+    fn n_vars(&self) -> usize {
+        self.inner.n_vars
+    }
+
+    /// Gröbner-style polynomial tiles (``GbPoly``), ascending by main variable.
+    fn polys(&self) -> Vec<PyGbPoly> {
+        self.inner
+            .polys
+            .iter()
+            .map(|p| PyGbPoly { inner: p.clone() })
+            .collect()
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "RegularChain(n_vars={}, n_polys={})",
+            self.inner.n_vars,
+            self.inner.len()
+        )
+    }
+}
+
+/// Lex-basis triangular decomposition (possibly split on factored univariates).
+#[cfg(feature = "groebner")]
+#[pyfunction]
+#[pyo3(name = "triangularize", signature = (equations, vars))]
+fn py_triangularize(
+    py: Python<'_>,
+    equations: Vec<PyRef<PyExpr>>,
+    vars: Vec<PyRef<PyExpr>>,
+) -> PyResult<PyObject> {
+    if equations.is_empty() || vars.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "triangularize requires at least one equation and one variable",
+        ));
+    }
+    let pool_py = equations[0].pool.clone_ref(py);
+    let eq_ids: Vec<ExprId> = equations.iter().map(|e| e.id).collect();
+    let var_ids: Vec<ExprId> = vars.iter().map(|v| v.id).collect();
+
+    let result = {
+        let pool = pool_py.borrow(py);
+        triangularize(eq_ids, var_ids, &pool.inner)
+    };
+
+    match result {
+        Err(e) => Python::with_gil(|py2| {
+            let exc_type = py2.get_type_bound::<PySolverError>();
+            Err(make_structured_err(py2, &exc_type, &e))
+        }),
+        Ok(chains) => {
+            let list = pyo3::types::PyList::empty_bound(py);
+            for chain in chains {
+                list.append(
+                    PyRegularChain { inner: chain }.into_py(py),
+                )?;
             }
             Ok(list.into())
         }
@@ -4185,7 +4265,9 @@ fn alkahest(m: &Bound<'_, PyModule>) -> PyResult<()> {
     {
         m.add_class::<PyGbPoly>()?;
         m.add_class::<PyGroebnerBasis>()?;
+        m.add_class::<PyRegularChain>()?;
         m.add_function(wrap_pyfunction!(py_solve, m)?)?;
+        m.add_function(wrap_pyfunction!(py_triangularize, m)?)?;
     }
     // V2-2 — Resultants and subresultant PRS
     m.add_function(wrap_pyfunction!(py_resultant, m)?)?;

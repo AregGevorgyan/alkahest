@@ -141,6 +141,22 @@ rel = guess_relation(["1", "2", "3"], precision_bits=256)
 
 The relation finder is an augmented-lattice + LLL heuristic, not Ferguson–Bailey PSLQ; treat results as exploratory unless verified independently.
 
+### Regular chains / triangular decomposition (V2-11)
+
+Lex-order Gröbner bases yield triangular sets used by the polynomial solver. The `triangularize(equations, vars)` API returns one or more `RegularChain` objects (polynomials as `GbPoly` tiles), splitting along factored bottom univariates when applicable. The built-in `solve()` routine retries backsolving from an extracted chain when the full basis is not directly triangular enough.
+
+```python
+import alkahest
+
+pool = alkahest.ExprPool()
+x = pool.symbol("x")
+y = pool.symbol("y")
+eq1 = x**2 + y**2 - pool.integer(1)
+eq2 = y - x
+chains = alkahest.triangularize([eq1, eq2], [x, y])
+assert len(chains) >= 1
+```
+
 ### Composable transformations
 
 ```python

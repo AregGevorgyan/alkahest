@@ -4,7 +4,7 @@
 
 ### Features
 
-- **V2-10 — Creative telescoping / Zeilberger (initial):** Rust `alkahest_core::sum` with Gosper indefinite/definite summation for rational hypergeometric terms built from polynomials and `gamma(linear(k))`, `solve_linear_recurrence_homogeneous` (order ≤ 2), `verify_wz_pair`, and `SumError` (`E-SUM-*`). Python: `sum_indefinite`, `sum_definite`, `solve_linear_recurrence_homogeneous`, `verify_wz_pair`, `SumError`, `LinearRecurrenceError`; `eval_expr` / interpreter gains unary `gamma`. Tests: `tests/test_sum_v210.py`, Rust `sum::*`.
+- **V2-11 — Regular chains / triangular decomposition:** Rust `triangularize`, `RegularChain`, `extract_regular_chain_from_basis`, `main_variable_recursive` (`alkahest_core::solver::regular_chains`); optional bottom-univariate factor splitting via V2-7; `solve_polynomial_system` fallback backsolve from an extracted chain after a lex-basis stall. Python: `triangularize`, `RegularChain`; benchmark task `solve_6r_ik` (planar IK proxy). Tests: `tests/test_regular_chains_v211.py`, Rust `solver::regular_chains`.
 
 ## 1.0.0
 
