@@ -28,6 +28,8 @@ pub mod real;
 pub mod simplify;
 #[cfg(feature = "groebner")]
 pub mod solver;
+#[cfg(feature = "groebner")]
+pub mod ideal;
 // V2-10 — Gosper / creative telescoping (WZ certificates)
 pub mod sum;
 pub mod stablehlo;
@@ -118,6 +120,10 @@ pub use solver::{
     expr_to_gbpoly, extract_regular_chain_from_basis, main_variable_recursive,
     solve_polynomial_system, triangularize, RegularChain, Solution, SolutionSet, SolverError,
 };
+#[cfg(feature = "groebner")]
+pub use ideal::{
+    primary_decomposition, radical, PrimaryComponent, PrimaryDecompositionError,
+};
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -177,6 +183,10 @@ pub mod stable {
     pub use crate::solver::{
         expr_to_gbpoly, extract_regular_chain_from_basis, main_variable_recursive,
         solve_polynomial_system, triangularize, RegularChain, Solution, SolutionSet, SolverError,
+    };
+    #[cfg(feature = "groebner")]
+    pub use crate::ideal::{
+        primary_decomposition, radical, PrimaryComponent, PrimaryDecompositionError,
     };
     pub use crate::version;
 }

@@ -157,6 +157,21 @@ chains = alkahest.triangularize([eq1, eq2], [x, y])
 assert len(chains) >= 1
 ```
 
+### Primary decomposition (V2-12)
+
+Lex-order Gröbner data is used to split ideals via saturations (`I : x_i^∞` with `(I + (x_i))`) and, in the zero-dimensional case, factoring a univariate polynomial in the first Lex variable. `primary_decomposition(polys, vars)` returns `PrimaryComponent` objects with `.primary()` and `.associated_prime()` Gröbner bases; `radical(polys, vars)` returns a basis for √I.
+
+```python
+import alkahest
+
+pool = alkahest.ExprPool()
+x, y, z = pool.symbol("x"), pool.symbol("y"), pool.symbol("z")
+comps = alkahest.primary_decomposition([x * y, x * z], [x, y, z])
+assert len(comps) == 2
+r = alkahest.radical([x**2, x * y], [x, y])
+assert r.contains(x)
+```
+
 ### Composable transformations
 
 ```python

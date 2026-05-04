@@ -355,18 +355,19 @@ See also **v2.1 — SymPy Parity** (V2-15 … V2-22) below.
 
 ---
 
-### V2-12. Primary decomposition (Gianni–Trager–Zacharias)
+### V2-12. Primary decomposition (Gianni–Trager–Zacharias) → ✅ Complete
 
-**What:** `I = ⋂ Qᵢ` decomposition with associated primes. Requires V5-11 Gröbner bases + V2-7 factorization.
+**What:** `I = ⋂ Qᵢ` with associated primes, built on Gröbner bases and polynomial factorization.
 
-**Design:**
-- `alkahest-core/src/ideal/primary.rs` — `primary_decomposition(I) -> Vec<(Primary, Associated)>`, `radical(I) -> Ideal`.
+**Delivered:**
+- `alkahest-core/src/ideal/primary.rs` — `primary_decomposition`, `radical`, `PrimaryComponent`, `PrimaryDecompositionError`.
+- Splitting: saturations `I = (I : x_i^∞) ∩ (I + (x_i))` when verified via ideal intersection; zero-dimensional refinement by factoring the univariate generator in the first Lex variable over ℚ (FLINT).
+- PyO3: `primary_decomposition(polys, vars)`, `radical(polys, vars)`, `PrimaryComponent` with `.primary()` / `.associated_prime()` → `GroebnerBasis`.
+- Tests: `(xy, xz)`, embedded `(x², xy)`, split `(x²-1, y)`; Python `tests/test_primary_decomposition_v212.py`.
 
-**Test plan:** `(xy, xz) = (x) ∩ (y, z)`; embedded primes in `(x², xy)`; Macaulay2 parity on 20 curated ideals.
+**Limitations:** General high-dimensional ideals without separating variables / reducible univariate slices may fall back to a single primary component or hit recursion limits; full GTZ equidimensional machinery is not implemented.
 
-**Acceptance:** `alkahest.primary_decomposition` public; integrates with `alkahest.solve`.
-
----
+**Acceptance:** `alkahest.primary_decomposition` and `alkahest.radical` on stable surface; complements `solve` / Gröbner tooling.
 
 ### V2-13. Differential algebra / Rosenfeld–Gröbner
 

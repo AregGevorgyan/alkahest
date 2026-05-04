@@ -37,6 +37,7 @@ pub use monomial_order::MonomialOrder;
 pub use reduce::reduce;
 
 /// A computed Gröbner basis.
+#[derive(Clone, Debug)]
 pub struct GroebnerBasis {
     generators: Vec<GbPoly>,
     order: MonomialOrder,
