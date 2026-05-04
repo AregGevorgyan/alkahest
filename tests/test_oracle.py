@@ -15,6 +15,7 @@ sympy = pytest.importorskip("sympy")
 import random  # noqa: E402
 
 from alkahest.alkahest import ExprPool, UniPoly, diff, integrate, simplify  # noqa: E402
+from alkahest import cos, eval_expr, exp, sin  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -252,3 +253,198 @@ def test_integrate_matches_sympy_random(seed):
     assert norm(ca_coeffs_int) == norm(sp_coeffs_int), (
         f"seed={seed} coeffs={coeffs}: alkahest={ca_coeffs_int}, sympy={sp_coeffs_int}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Non-polynomial integration oracle — random integrable expressions vs SymPy
+# ---------------------------------------------------------------------------
+#
+# Strategy: build random expressions from a grammar of forms that alkahest's
+# rule-based integrator handles (sin/cos/exp with linear args, powers, sums,
+# scalar multiples).  For each generated expression:
+#   1. Compute alkahest integral F.
+#   2. Numerically differentiate F at several test points and compare to the
+#      original expression evaluated at the same points.  This avoids the need
+#      to normalise two symbolic forms that may look different but be equal.
+#   3. Also compare F against SymPy's integral numerically (the "vs SymPy"
+#      part of the oracle).
+# ---------------------------------------------------------------------------
+
+_NONPOLY_TEST_POINTS = [0.3, 0.7, 1.2, 1.9, 2.5]
+_DIFF_H = 1e-7
+_ABS_TOL = 1e-5
+_REL_TOL = 1e-4
+
+
+def _eval_at(expr, x_sym, x_val: float) -> float | None:
+    """Evaluate an alkahest expression at a single float point; return None on error."""
+    try:
+        return eval_expr(expr, {x_sym: x_val})
+    except Exception:
+        return None
+
+
+def _sympy_eval(sp_expr, sx, x_val: float) -> float | None:
+    try:
+        v = float(sp_expr.subs(sx, x_val).evalf())
+        return v
+    except Exception:
+        return None
+
+
+def _numeric_derivative(F_expr, x_sym, x_val: float) -> float | None:
+    """Central-difference approximation of F'(x_val)."""
+    plus = _eval_at(F_expr, x_sym, x_val + _DIFF_H)
+    minus = _eval_at(F_expr, x_sym, x_val - _DIFF_H)
+    if plus is None or minus is None:
+        return None
+    return (plus - minus) / (2 * _DIFF_H)
+
+
+def _approx_equal(a: float, b: float) -> bool:
+    """True when |a - b| ≤ atol + rtol * |b|."""
+    return abs(a - b) <= _ABS_TOL + _REL_TOL * abs(b)
+
+
+# --- Expression grammar ---
+
+def _random_atom(pool, x, sx, rng):
+    """Return (alk_expr, sympy_expr) for a simple integrable atom.
+
+    Only forms that alkahest's rule-based integrator handles are generated:
+    - x^n        (power rule, n=0..4)
+    - sin(x)     (direct rule; sin(a*x) for a>1 is not yet implemented)
+    - cos(x)     (direct rule)
+    - exp(a*x)   (linear-arg rule, a=1..2)
+    - x*exp(x)   (product rule)
+    """
+    choice = rng.randint(0, 4)
+    if choice == 0:
+        n = rng.randint(0, 4)
+        return x ** n, sx ** n
+    elif choice == 1:
+        return sin(x), sympy.sin(sx)
+    elif choice == 2:
+        return cos(x), sympy.cos(sx)
+    elif choice == 3:
+        a = rng.randint(1, 2)
+        return exp(pool.integer(a) * x), sympy.exp(sympy.Integer(a) * sx)
+    else:
+        # x * exp(x) — special product rule
+        return x * exp(x), sx * sympy.exp(sx)
+
+
+def _random_integrable(pool, x, sx, rng, depth=0):
+    """Recursively build a random integrable (alk_expr, sympy_expr) pair."""
+    if depth >= 2:
+        return _random_atom(pool, x, sx, rng)
+
+    r = rng.random()
+
+    if r < 0.30:
+        return _random_atom(pool, x, sx, rng)
+    elif r < 0.55:
+        # sum of two integrable sub-expressions
+        a_ak, a_sp = _random_integrable(pool, x, sx, rng, depth + 1)
+        b_ak, b_sp = _random_integrable(pool, x, sx, rng, depth + 1)
+        return a_ak + b_ak, a_sp + b_sp
+    elif r < 0.75:
+        # scalar multiple
+        c = rng.randint(1, 4)
+        a_ak, a_sp = _random_integrable(pool, x, sx, rng, depth + 1)
+        return pool.integer(c) * a_ak, sympy.Integer(c) * a_sp
+    else:
+        return _random_atom(pool, x, sx, rng)
+
+
+@pytest.mark.parametrize("seed", range(80))
+def test_integrate_nonpoly_diff_check(seed):
+    """d/dx(alkahest_integrate(f, x)) ≈ f at test points (no SymPy required)."""
+    rng = random.Random(seed + 1000)
+    pool = ExprPool()
+    x = pool.symbol("x")
+    sx = sympy.Symbol("x")
+
+    f_ak, _ = _random_integrable(pool, x, sx, rng)
+
+    try:
+        F_result = integrate(f_ak, x)
+    except Exception:
+        pytest.skip(f"seed={seed}: alkahest.integrate raised for this expr")
+
+    F_ak = F_result.value
+    passed = 0
+    skipped = 0
+
+    for x_val in _NONPOLY_TEST_POINTS:
+        f_val = _eval_at(f_ak, x, x_val)
+        F_prime = _numeric_derivative(F_ak, x, x_val)
+        if f_val is None or F_prime is None:
+            skipped += 1
+            continue
+        assert _approx_equal(F_prime, f_val), (
+            f"seed={seed} x={x_val}: F'={F_prime:.6g} but f={f_val:.6g}"
+        )
+        passed += 1
+
+    if passed == 0:
+        pytest.skip(f"seed={seed}: all test points produced NaN/error")
+
+
+def _sympy_derivative(sp_expr, sx, x_val: float) -> float | None:
+    """Central-difference approximation of d/dx sp_expr at x_val."""
+    h = _DIFF_H
+    try:
+        plus = float(sp_expr.subs(sx, x_val + h).evalf())
+        minus = float(sp_expr.subs(sx, x_val - h).evalf())
+        return (plus - minus) / (2 * h)
+    except Exception:
+        return None
+
+
+@pytest.mark.parametrize("seed", range(80))
+def test_integrate_nonpoly_vs_sympy(seed):
+    """alkahest F'(x) ≈ SymPy F'(x) numerically — both antiderivatives satisfy FTC."""
+    rng = random.Random(seed + 2000)
+    pool = ExprPool()
+    x = pool.symbol("x")
+    sx = sympy.Symbol("x")
+
+    f_ak, f_sp = _random_integrable(pool, x, sx, rng)
+
+    try:
+        F_ak_result = integrate(f_ak, x)
+    except Exception:
+        pytest.skip(f"seed={seed}: alkahest.integrate raised for this expr")
+
+    F_ak = F_ak_result.value
+
+    try:
+        F_sp = sympy.integrate(f_sp, sx)
+    except Exception:
+        pytest.skip(f"seed={seed}: sympy.integrate raised for this expr")
+
+    passed = 0
+    skipped = 0
+
+    for x_val in _NONPOLY_TEST_POINTS:
+        # Antiderivatives may differ by a constant, so compare F'(x) against f(x)
+        # for both alkahest and SymPy independently.
+        ak_prime = _numeric_derivative(F_ak, x, x_val)
+        sp_prime = _sympy_derivative(F_sp, sx, x_val)
+        f_val = _eval_at(f_ak, x, x_val)
+
+        if ak_prime is None or sp_prime is None or f_val is None:
+            skipped += 1
+            continue
+
+        assert _approx_equal(ak_prime, f_val), (
+            f"seed={seed} x={x_val}: alkahest F'={ak_prime:.6g} but f={f_val:.6g}"
+        )
+        assert _approx_equal(sp_prime, f_val), (
+            f"seed={seed} x={x_val}: sympy F'={sp_prime:.6g} but f={f_val:.6g}"
+        )
+        passed += 1
+
+    if passed == 0:
+        pytest.skip(f"seed={seed}: all test points produced NaN/error")

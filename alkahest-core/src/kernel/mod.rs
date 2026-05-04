@@ -1,3 +1,4 @@
+pub mod display;
 pub mod domain;
 pub mod expr;
 pub mod pool;
@@ -5,6 +6,7 @@ pub mod pool_persist;
 mod proptests;
 pub mod subs;
 
+pub use display::{render_latex, render_unicode};
 pub use domain::Domain;
 pub use expr::{BigFloat, BigInt, BigRat, ExprData, ExprId};
 pub use pool::{ExprDisplay, ExprPool};

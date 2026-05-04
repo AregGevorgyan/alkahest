@@ -31,8 +31,8 @@ pub use hybrid::{Event, GuardStructure, HybridODE};
 pub use integrate::{integrate, IntegrationError};
 #[allow(deprecated)]
 pub use kernel::{
-    load_from, open_persistent, save_to, subs, Domain, ExprData, ExprDisplay, ExprId, ExprPool,
-    IoError, PoolPersistError,
+    load_from, open_persistent, render_latex, render_unicode, save_to, subs, Domain, ExprData,
+    ExprDisplay, ExprId, ExprPool, IoError, PoolPersistError,
 };
 pub use matrix::{jacobian, Matrix, MatrixError};
 pub use ode::{

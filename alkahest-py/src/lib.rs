@@ -327,6 +327,14 @@ impl PyExpr {
         self.pool.borrow(py).inner.display(self.id).to_string()
     }
 
+    fn display_latex(&self, py: Python<'_>) -> String {
+        alkahest_core::render_latex(self.id, &self.pool.borrow(py).inner)
+    }
+
+    fn display_unicode(&self, py: Python<'_>) -> String {
+        alkahest_core::render_unicode(self.id, &self.pool.borrow(py).inner)
+    }
+
     // ------------------------------------------------------------------
     // Arithmetic — accept Expr, int, or float on the right-hand side.
     // Return py.NotImplemented() for unrecognised types so Python can
