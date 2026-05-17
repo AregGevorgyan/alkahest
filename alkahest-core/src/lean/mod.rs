@@ -161,7 +161,8 @@ fn expr_to_lean(expr: ExprId, pool: &ExprPool) -> String {
             format!("({n} / {d} : ℝ)")
         }
         ExprData::Float(f) => format!("({} : ℝ)", f.inner),
-        ExprData::Symbol { name, .. } => name.clone(),
+        // Bare names leave metavariables in goals like `(x ^ (1 : ℕ) = x)` (`HPow ?m ℕ ?m`).
+        ExprData::Symbol { name, .. } => format!("({name} : ℝ)"),
         ExprData::Add(args) => {
             let parts: Vec<String> = args.iter().map(|&a| expr_to_lean(a, pool)).collect();
             format!("({})", parts.join(" + "))
@@ -304,6 +305,10 @@ mod tests {
         assert!(
             s.contains(": ℕ"),
             "expected Nat exponent for HPow ℝ ℕ ℝ, got: {s}"
+        );
+        assert!(
+            s.contains("(x : ℝ)"),
+            "base must be typed as ℝ so HPow resolves: {s}"
         );
         assert!(
             !s.contains("(1 : ℝ)"),
