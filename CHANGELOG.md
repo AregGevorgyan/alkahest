@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.1 — 2026-05-16
+
+### Packaging / releases
+
+- Version **2.0.1** (workspace + `pyproject.toml`).
+- **Release CI (`+full` wheels):** Linux `linux_x86_64` wheels with PEP 440 local version **`X.Y.Z+full`**, built with Cargo features `jit groebner parallel egraph`, attached to **GitHub Releases** next to existing **`+jit`** wheels. **`+jit`** and **`+full`** wheels are **not** uploaded to the main PyPI simple API (same policy as before for `+jit`) so `pip install alkahest` stays on the small default wheels.
+
 ## 2.0.0 — 2026-05-06
 
 ### Calculus and series

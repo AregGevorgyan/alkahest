@@ -9,7 +9,7 @@
 
 A high-performance computer algebra system for Python built for both humans and agents. Symbolic operations run orders of magnitude faster than SymPy and can run on modern accelerated hardware. Every computation produces a derivation log; a meaningful subset can export Lean 4 proofs for independent verification.
 
-**Install:** the package is published on [PyPI](https://pypi.org/project/alkahest/); use `pip install alkahest` (Python ≥ 3.9). See [Install](#install) below for optional LLVM JIT wheels and building from source.
+**Install:** the package is published on [PyPI](https://pypi.org/project/alkahest/); use `pip install alkahest` (Python ≥ 3.9). See [Install](#install) below for optional **`+jit`** / **`+full`** Linux wheels (GitHub Releases or a future extras index) and building from source.
 
 **Stack:** Rust kernel → FLINT/Arb (polynomials, ball arithmetic) → egglog (e-graph simplification) → MLIR/LLVM (native and GPU codegen) → PyO3 → Python
 
@@ -21,30 +21,40 @@ A high-performance computer algebra system for Python built for both humans and 
 pip install alkahest
 ```
 
-Wheels on PyPI are built **without** the LLVM JIT feature so installs stay small and avoid a runtime dependency on LLVM. Numeric APIs still work via the interpreter fallback; for native LLVM CPU JIT, use a **PyTorch-style** opt-in build (separate artifact / index), not the default resolver path.
+Wheels on PyPI are built **without** the LLVM JIT and **without** the optional `groebner` / `egraph` / `parallel` Rust features so installs stay small and avoid a runtime dependency on LLVM. Numeric APIs still work via the interpreter fallback; for native LLVM CPU JIT—or the full Gröbner/JIT stack—use a **PyTorch-style** opt-in wheel (separate artifact / index), not the default PyPI resolver path.
 
-### LLVM JIT wheels (PyTorch-style, opt-in)
+### Opt-in Linux wheels: `+jit` and `+full` (PyTorch-style)
 
-**Why a separate index or direct wheel URL:** JIT-enabled wheels use a PEP 440 local version (for example `2.0.0+jit`). Those builds **must not** be mixed into the main PyPI upload for the same reason PyTorch publishes CUDA wheels on `download.pytorch.org`: otherwise `pip install alkahest` can resolve the `+jit` build as “newer” than `2.0.0` and pull LLVM when you wanted the default wheel.
+**Why a separate index or direct wheel URL:** feature-heavy wheels use a PEP 440 **local version** (for example `2.0.1+jit` or `2.0.1+full`). Those builds **must not** be mixed into the main PyPI project’s simple API for the same reason PyTorch publishes CUDA wheels on `download.pytorch.org`: otherwise `pip install alkahest` could resolve a `+jit` / `+full` build as “newer” than `2.0.1` and pull LLVM (or a much larger binary) when you wanted the default wheel.
 
-There is **no** `pip install alkahest[jit]` (or similar) on PyPI: default wheels omit JIT so resolution stays predictable.
+There is **no** `pip install alkahest[jit]` / `alkahest[full]` that swaps the native extension: **pip extras only add Python dependencies**, not alternate binaries for the same wheel slot.
 
-**Until a dedicated PEP 503 simple index is published**, tagged releases attach Linux **manylinux** `+jit` wheels on [GitHub Releases](https://github.com/alkahest-cas/alkahest/releases). Pick the `.whl` whose tags match your Python (`cp311`, etc.) and platform (`manylinux_2_28_x86_64`, …). Example (adjust tag and filename after checking the release assets):
+**Until a dedicated PEP 503 simple index is published**, tagged releases attach Linux **`linux_x86_64`** wheels on [GitHub Releases](https://github.com/alkahest-cas/alkahest/releases) (CI builds them on `ubuntu-22.04`, not the manylinux image used for default wheels). Pick the `.whl` whose tags match your Python (`cp311`, etc.) and **`linux_x86_64`**.
+
+| Local version | Cargo features | When to use |
+|---------------|----------------|-------------|
+| `+jit` | `jit` | Native LLVM CPU JIT only (smaller than `+full`). |
+| `+full` | `jit groebner parallel egraph` | JIT plus Gröbner-backed solvers, parallel F4, egglog e-graph backend (matches a typical maximal **from-source** dev build). |
+
+Direct-install examples (adjust tag and filename after checking the release assets):
 
 ```bash
-pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.0/alkahest-2.0.0+jit-cp311-cp311-manylinux_2_28_x86_64.whl"
+pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.1/alkahest-2.0.1+full-cp311-cp311-linux_x86_64.whl"
+pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.1/alkahest-2.0.1+jit-cp311-cp311-linux_x86_64.whl"
 ```
 
-Some manylinux `+jit` builds vendor LLVM and related `.so` files under `site-packages/alkahest.libs/`. If `import alkahest` fails with a missing `libffi-*.so` or `libLLVM-*.so`, prepend that directory to `LD_LIBRARY_PATH` (or install matching system packages). Release CI uses the same `LD_LIBRARY_PATH` step when smoke-testing wheels.
+These wheels vendor LLVM (for JIT) and related `.so` files under `site-packages/alkahest.libs/`. If `import alkahest` fails with a missing `libffi-*.so` or `libLLVM-*.so`, prepend that directory to `LD_LIBRARY_PATH` (or install matching system packages). Release CI uses the same `LD_LIBRARY_PATH` step when smoke-testing wheels.
 
-If your client chokes on `+` in the URL, use percent-encoding (`2.0.0%2Bjit` in the filename segment).
+If your client chokes on `+` in the URL, use percent-encoding (`2.0.1%2Bfull` in the filename segment).
 
-After installation, `alkahest.jit_is_available()` should be `True`. *macOS and Windows JIT wheels are not produced in CI yet (LLVM/MSYS2 constraints); use [building from source](#from-source) there.*
+After installing `+jit`, `alkahest.jit_is_available()` should be `True`. After `+full`, expect that **and** Gröbner-backed APIs such as `alkahest.solve`.
 
-**Target layout (roadmap):** a small **extra index** URL (PEP 503) hosting only `+jit` wheels, mirroring PyTorch’s `--extra-index-url` workflow:
+*macOS and Windows `+jit` / `+full` wheels are not produced in CI yet (LLVM / MSYS2 constraints); use [building from source](#from-source) there.*
+
+**Target layout (roadmap):** a small **extra index** URL (PEP 503) hosting only `+jit` / `+full` wheels, mirroring PyTorch’s `--extra-index-url` workflow:
 
 ```bash
-pip install 'alkahest==2.0.0+jit' --extra-index-url https://EXAMPLE/jit/simple
+pip install 'alkahest==2.0.1+full' --extra-index-url https://EXAMPLE/alkahest-extras/simple
 ```
 
 ### From source

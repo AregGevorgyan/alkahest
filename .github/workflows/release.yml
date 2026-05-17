@@ -138,6 +138,74 @@ jobs:
           name: wheels-ubuntu-22.04-jit-py${{ matrix.python }}
           path: dist/*.whl
 
+  # Full optional stack (JIT + groebner + parallel + egraph): PEP 440 local version X.Y.Z+full.
+  # Same non-PyPI / GitHub Release policy as +jit (see build-linux-jit). Linux x86_64 only in CI.
+  build-linux-full:
+    name: wheels (+full) / ubuntu-22.04 / py${{ matrix.python }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    env:
+      PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+      LLVM_SYS_150_PREFIX: /usr
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system deps
+        run: sudo apt-get install -y libflint-dev llvm-15-dev
+
+      - name: Use +full local version in pyproject.toml
+        run: |
+          python - <<'PY'
+          import pathlib, re
+          p = pathlib.Path("pyproject.toml")
+          text = p.read_text()
+          m = re.search(r'^version = "([^"]+)"', text, re.M)
+          if not m:
+              raise SystemExit("no project.version in pyproject.toml")
+          base = m.group(1)
+          text = re.sub(
+              r'^version = "[^"]+"',
+              f'version = "{base}+full"',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          p.write_text(text)
+          print(f"wheel metadata version -> {base}+full")
+          PY
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build +full wheel
+        run: >-
+          maturin build --release --strip
+          --features "jit groebner parallel egraph"
+          --out dist
+
+      - name: Smoke test (+full)
+        run: |
+          pip install --find-links dist alkahest
+          SITE_LIBS="$(python -c "import os, site; roots=site.getsitepackages(); hits=[os.path.join(r, 'alkahest.libs') for r in roots if os.path.isdir(os.path.join(r, 'alkahest.libs'))]; print(os.pathsep.join(hits))")"
+          if [ -n "$SITE_LIBS" ]; then
+            export LD_LIBRARY_PATH="${SITE_LIBS}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          fi
+          python -c "import alkahest as ak; assert ak.jit_is_available(); assert hasattr(ak, 'solve'), 'expected groebner APIs in +full wheel'"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-ubuntu-22.04-full-py${{ matrix.python }}
+          path: dist/*.whl
+
   build-wheels:
     name: wheel ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -246,14 +314,14 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Exclude +jit wheels from TestPyPI upload
+      - name: Exclude local-version (+jit / +full) wheels from TestPyPI upload
         run: |
           mkdir -p dist-pypi
           shopt -s nullglob
           for whl in dist/*.whl; do
             b=$(basename "$whl")
             case "$b" in
-              *+jit*) ;;
+              *+jit*|*+full*) ;;
               *) cp "$whl" dist-pypi/ ;;
             esac
           done
@@ -278,14 +346,14 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Exclude +jit wheels from PyPI upload
+      - name: Exclude local-version (+jit / +full) wheels from PyPI upload
         run: |
           mkdir -p dist-pypi
           shopt -s nullglob
           for whl in dist/*.whl; do
             b=$(basename "$whl")
             case "$b" in
-              *+jit*) ;;
+              *+jit*|*+full*) ;;
               *) cp "$whl" dist-pypi/ ;;
             esac
           done
@@ -295,9 +363,9 @@ jobs:
         with:
           packages-dir: dist
 
-  attach-jit-wheels:
-    name: attach +jit wheels to GitHub Release
-    needs: [build-linux-jit]
+  attach-optional-linux-wheels:
+    name: attach +jit / +full wheels to GitHub Release
+    needs: [build-linux-jit, build-linux-full]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -305,9 +373,9 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: wheels-ubuntu-22.04-jit-py*
-          path: dist-jit
+          pattern: wheels-ubuntu-22.04-*-py*
+          path: dist-extras
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist-jit/*.whl
+          files: dist-extras/*.whl

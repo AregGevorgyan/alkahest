@@ -18,7 +18,7 @@
 Items in rough priority order. None are committed to a specific release date.
 
 ### Near-term
-- **PyPI wheel publishing** — manylinux 2_28 / macOS arm64 / Windows GNU wheel matrix via `release.yml`; default uploads exclude LLVM **+jit** builds (GitHub Release assets + future PEP 503 “extra index” — see README)
+- **PyPI wheel publishing** — manylinux 2_28 / macOS arm64 / Windows GNU wheel matrix via `release.yml`; default uploads exclude LLVM **`+jit`** and **full-stack `+full`** builds (GitHub Release assets + future PEP 503 “extra index” — see README)
 - **Full Gruntz limits** — comparability-graph algorithm for general transcendental sequences; Lean `Filter.Tendsto` certificates (current implementation uses prototype L'Hôpital rules)
 - **Polyhedral / mixed-volume homotopy** — needed for deficient systems whose affine root count is below the Bézout bound (e.g. Katsura family)
 
@@ -32,6 +32,6 @@ Items in rough priority order. None are committed to a specific release date.
 ### Infrastructure
 - **Complete Lean certificate coverage** — bring Lean 4 export (rewrite-tagged proof traces and algorithmic witnesses) up to parity with every supported proof-producing operation; track gaps and add regression checks so new algorithms and rules do not land without matching certificate paths or Mathlib theorem hooks.
 - **First-class Rust crate** — publish `alkahest-core` on [crates.io](https://crates.io) and document direct Rust use of the semver-stable `alkahest_core::stable` API (examples, feature-flag matrix for optional backends) so the kernel is a normal library dependency, not only a Python extension build artifact.
-- **LLVM JIT wheels — PyTorch-style auxiliary index** — keep default PyPI wheels free of the LLVM/inkwell dependency; publish LLVM-enabled builds under a PEP 440 local version (for example `2.0.0+jit`) on a **separate PEP 503 index** (or GitHub Release assets until that index exists) so `pip install alkahest` stays on the small default while `pip install 'alkahest==…+jit' --extra-index-url …` opts into native CPU JIT. Rationale: if `+jit` and the plain release were both uploaded to the same PyPI project, many resolvers would treat the local segment as newer and pull LLVM by default.
+- **LLVM JIT + full-feature wheels — PyTorch-style auxiliary index** — keep default PyPI wheels free of the LLVM/inkwell dependency and heavy optional features; publish **`+jit`** (JIT only) and **`+full`** (`jit groebner parallel egraph`) under PEP 440 local versions on a **separate PEP 503 index** (or GitHub Release assets until that index exists) so `pip install alkahest` stays on the small default while `pip install 'alkahest==…+jit'` / `'…+full'` with `--extra-index-url …` opts in. Rationale: if local-version wheels and the plain release were both uploaded to the same PyPI project, many resolvers would treat the local segment as newer and pull the large binary by default.
 - **Native Rust codegen (exploratory)** — optional backend to compile hot numeric eval paths to pure Rust machine code (or a pure-Rust codegen crate such as Cranelift) so prebuilt wheels can offer strong CPU performance **without** shipping libLLVM; LLVM/NVPTX remains for GPU and MLIR interop where needed.
 - **AMD ROCm / `amdgcn` codegen** — hardware-blocked until RDNA3 / MI-series runner is available
