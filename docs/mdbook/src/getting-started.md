@@ -37,13 +37,13 @@ Tagged releases attach **`linux_x86_64`** wheels on [GitHub Releases](https://gi
 Example direct installs (replace **version**, tag, and wheel name using the release asset list):
 
 ```bash
-pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.1/alkahest-2.0.1+full-cp311-cp311-linux_x86_64.whl"
-pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.1/alkahest-2.0.1+jit-cp311-cp311-linux_x86_64.whl"
+pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.2/alkahest-2.0.2+full-cp311-cp311-linux_x86_64.whl"
+pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.2/alkahest-2.0.2+jit-cp311-cp311-linux_x86_64.whl"
 ```
 
 These wheels vendor LLVM and related `.so` files under `site-packages/alkahest.libs/`. If `import alkahest` fails with a missing `libLLVM-*.so` or `libffi-*.so`, prepend that directory to `LD_LIBRARY_PATH` (or install matching system packages).
 
-If your downloader rejects `+` in the URL, percent-encode it in the filename segment (e.g. `2.0.1%2Bfull`).
+If your downloader rejects `+` in the URL, percent-encode it in the filename segment (e.g. `2.0.2%2Bfull`).
 
 After `+jit`, `alkahest.jit_is_available()` should be `True`. After `+full`, expect that **and** Gröbner-backed APIs such as `alkahest.solve`.
 

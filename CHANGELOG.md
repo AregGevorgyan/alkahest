@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2 — 2026-05-17
+
+### Packaging / releases
+
+- Version **2.0.2** (workspace + `pyproject.toml`). Git tag **`v2.0.2`** for release CI (PyPI default wheels + **`+jit` / `+full`** on GitHub Releases). (`v2.01.0` / `2.01.0` is not a valid Cargo semver — leading zeros in numeric components.)
+
 ## 2.0.1 — 2026-05-16
 
 ### Packaging / releases
