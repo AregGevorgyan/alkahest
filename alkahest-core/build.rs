@@ -1,3 +1,8 @@
+/// Informational FLINT probe output (stderr only — avoids rustc-style `cargo:warning=` spam in CI).
+fn flint_probe_note(msg: impl std::fmt::Display) {
+    eprintln!("[alkahest-core/build.rs] {msg}");
+}
+
 fn main() {
     // Custom cfgs from this build script; keeps `unexpected_cfgs` quiet.
     println!("cargo::rustc-check-cfg=cfg(flint3)");
@@ -181,16 +186,16 @@ fn flint_major_at_least_3(version: &str) -> bool {
 /// FLINT 3 renamed `nmod_poly_factor_get_nmod_poly` → `nmod_poly_factor_get_poly`.
 fn detect_flint3() -> bool {
     if let Some(ver) = flint_version_string() {
-        println!("cargo:warning=FLINT version (header/pkg-config): {ver}");
+        flint_probe_note(format!("FLINT version (header/pkg-config): {ver}"));
         return flint_major_at_least_3(&ver);
     }
     // Header and pkg-config both failed (e.g., libflint-dev ships no .pc on
     // Debian/Ubuntu and the header path differs).  Fall back to symbol
     // inspection: FLINT 3 exports `nmod_poly_factor_get_poly` while FLINT 2
     // exported `nmod_poly_factor_get_nmod_poly`.
-    println!("cargo:warning=FLINT header/pkg-config detection failed; trying nm");
+    flint_probe_note("FLINT header/pkg-config detection failed; trying nm");
     let r = detect_flint3_by_nm();
-    println!("cargo:warning=FLINT nm symbol detection → flint3={r}");
+    flint_probe_note(format!("FLINT nm symbol detection → flint3={r}"));
     r
 }
 
@@ -210,10 +215,14 @@ fn detect_flint3_stride() -> bool {
                     && !l.starts_with('#')
             });
             if found {
-                println!("cargo:warning=FLINT fmpz_mat_struct uses stride layout (from {path})");
+                flint_probe_note(format!(
+                    "FLINT fmpz_mat_struct uses stride layout (from {path})"
+                ));
                 return true;
             } else {
-                println!("cargo:warning=FLINT fmpz_mat_struct uses rows layout (from {path})");
+                flint_probe_note(format!(
+                    "FLINT fmpz_mat_struct uses rows layout (from {path})"
+                ));
                 return false;
             }
         }
@@ -223,7 +232,7 @@ fn detect_flint3_stride() -> bool {
     if let Some(ver) = flint_version_string() {
         let parts: Vec<u32> = ver.split('.').filter_map(|s| s.parse().ok()).collect();
         if parts.len() >= 2 && parts[0] >= 3 && parts[1] >= 1 {
-            println!("cargo:warning=FLINT stride layout assumed from version {ver}");
+            flint_probe_note(format!("FLINT stride layout assumed from version {ver}"));
             return true;
         }
     }
@@ -246,7 +255,7 @@ fn detect_flint3_by_nm_inner() -> Option<bool> {
         .filter(|l| l.contains("libflint"))
         .filter_map(|l| l.split("=>").nth(1).map(|s| s.trim().to_string()))
         .find(|p| !p.is_empty())?;
-    println!("cargo:warning=FLINT library found by ldconfig: {lib_path}");
+    flint_probe_note(format!("FLINT library found by ldconfig: {lib_path}"));
     let nm = std::process::Command::new("nm")
         .args(["-D", "--defined-only", &lib_path])
         .output()

@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Built in docs.yml for Pages; committing it bloats the repo and drifts from sources.
       - name: No committed _site/ (generated docs bundle)
@@ -38,12 +38,12 @@ jobs:
           components: clippy, rustfmt
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -125,18 +125,18 @@ jobs:
     if: github.event_name == 'schedule'
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -186,7 +186,7 @@ jobs:
           - extras
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable
         if: >-
@@ -204,7 +204,7 @@ jobs:
           targets: x86_64-unknown-linux-gnu
           components: rust-src
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         if: matrix.shard == 'hypothesis' || matrix.shard == 'extras'
         with:
           python-version: "3.11"
@@ -221,7 +221,7 @@ jobs:
         run: sudo apt-get install -y libflint-dev llvm-15-dev llvm-15
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -317,7 +317,7 @@ jobs:
 
       - name: Upload benchmark artifacts
         if: always() && matrix.shard == 'extras'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmarks-${{ github.run_id }}
           path: |

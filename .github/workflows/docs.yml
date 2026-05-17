@@ -32,7 +32,7 @@ jobs:
     name: Build docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install mdBook
         uses: taiki-e/install-action@v2
@@ -42,7 +42,7 @@ jobs:
       - name: Build mdBook (user guide)
         run: mdbook build docs/mdbook
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 

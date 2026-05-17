@@ -43,7 +43,7 @@ jobs:
             python: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── Rust toolchain ───────────────────────────────────────────────────────
       - name: Install Rust (${{ matrix.rust_toolchain }})
@@ -84,7 +84,7 @@ jobs:
 
       # ── Cargo cache ──────────────────────────────────────────────────────────
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -125,7 +125,7 @@ jobs:
       # ── Python tests (macOS only) ────────────────────────────────────────────
       - name: Install Python
         if: matrix.python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
