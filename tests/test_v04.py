@@ -9,9 +9,7 @@ Covers:
 import math
 
 import pytest
-
 from _step_logs import assert_same_step_rules
-
 from alkahest import (
     ArbBall,
     ExprPool,

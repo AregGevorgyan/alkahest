@@ -11,7 +11,7 @@ _TESTS_DIR = Path(__file__).resolve().parent
 if str(_TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(_TESTS_DIR))
 
-from hypothesis import settings
+from hypothesis import settings  # noqa: E402 — must follow sys.path bootstrap for `_step_logs`
 
 # ---------------------------------------------------------------------------
 # Hypothesis profiles

@@ -211,7 +211,8 @@ class GradTracedFn:
 
 
 class CompiledGradTracedFn:
-    """A :class:`GradTracedFn` with one :class:`~alkahest.alkahest.CompiledFn` per partial derivative.
+    """A :class:`GradTracedFn` with one :class:`~alkahest.alkahest.CompiledFn` per
+    partial derivative.
 
     Created via :func:`jit` applied to a :class:`GradTracedFn` (for example
     ``jit(grad(f))``).  Reuses the same LLVM / interpreter backends as

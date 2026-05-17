@@ -7,7 +7,8 @@ compare multisets of rule names (or sorted projections), not raw list equality.
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 
 def rule_counter(steps: list[Mapping[str, Any]]) -> Counter[str]:
