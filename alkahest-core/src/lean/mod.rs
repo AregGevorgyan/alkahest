@@ -172,7 +172,6 @@ fn expr_to_lean(expr: ExprId, pool: &ExprPool) -> String {
         }
         ExprData::Pow { base, exp } => {
             let b = expr_to_lean(*base, pool);
-            let e = expr_to_lean(*exp, pool);
             let neg_int = pool.with(*exp, |d| match d {
                 ExprData::Integer(n) if n.0 < 0 => n.0.to_i64(),
                 _ => None,
@@ -182,9 +181,15 @@ fn expr_to_lean(expr: ExprId, pool: &ExprPool) -> String {
                 if abs_n == 1 {
                     format!("({b})⁻¹")
                 } else {
-                    format!("({b})⁻¹ ^ {abs_n}")
+                    format!("({b})⁻¹ ^ ({abs_n} : ℕ)")
                 }
             } else {
+                // Nonnegative integer exponents must use `(n : ℕ)` so Lean picks `HPow ℝ ℕ ℝ`.
+                // Using `(n : ℝ)` leads to `Real.rpow` and stuck metavariables on goals like `x^1 = x`.
+                let e = pool.with(*exp, |d| match d {
+                    ExprData::Integer(n) if n.0 >= 0 => format!("({} : ℕ)", n.0),
+                    _ => expr_to_lean(*exp, pool),
+                });
                 format!("({b}) ^ {e}")
             }
         }
@@ -287,5 +292,22 @@ mod tests {
         let sin_x = pool.func("sin", vec![x]);
         let s = expr_to_lean(sin_x, &pool);
         assert!(s.contains("Real.sin"));
+    }
+
+    #[test]
+    fn expr_to_lean_pow_natural_exp_is_nat() {
+        let pool = p();
+        let x = pool.symbol("x", Domain::Real);
+        let one = pool.integer(1_i32);
+        let pow_x_1 = pool.pow(x, one);
+        let s = expr_to_lean(pow_x_1, &pool);
+        assert!(
+            s.contains(": ℕ"),
+            "expected Nat exponent for HPow ℝ ℕ ℝ, got: {s}"
+        );
+        assert!(
+            !s.contains("(1 : ℝ)"),
+            "Real exponent triggers rpow metavariable issues: {s}"
+        );
     }
 }
