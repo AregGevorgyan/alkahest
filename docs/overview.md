@@ -1,5 +1,9 @@
 # Alkahest Documentation
 
+Published guides (including **install**: PyPI default wheel vs optional ``+jit`` / ``+full`` Linux
+releases, and building from source) live at https://alkahest-cas.github.io/alkahest/ — start at
+*Getting started*.
+
 ## User guide (mdBook)
 
 The conceptual guide covers kernel design, rule engine, e-graph saturation,

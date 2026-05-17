@@ -2,17 +2,54 @@
 
 ## Install
 
-### PyPI (recommended)
+### PyPI (default)
 
-Alkahest is on the [Python Package Index](https://pypi.org/project/alkahest/):
+Alkahest is on the [Python Package Index](https://pypi.org/project/alkahest/). Supported interpreters are **Python 3.9 through 3.13** (`requires-python` on PyPI).
 
 ```bash
+python -m pip install -U pip
 pip install alkahest
 ```
 
-Default wheels omit the LLVM JIT feature so installs stay small and avoid a runtime dependency on LLVM. Numeric APIs still work through the interpreter; for native LLVM CPU JIT, use an opt-in JIT-enabled wheel or [build from source](#from-source) (see also the project `README` on GitHub).
+Use a virtual environment when you also build from source or test multiple Python versions:
 
-**JIT-enabled wheels (optional):** tagged releases attach Linux manylinux `+jit` wheels on [GitHub Releases](https://github.com/alkahest-cas/alkahest/releases). Install the `.whl` whose tags match your Python and platform, or build from source on macOS and Windows where JIT wheels are not built in CI yet.
+```bash
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m pip install -U pip
+pip install alkahest
+```
+
+Wheels on PyPI are built **without** LLVM JIT and **without** the optional Rust features `groebner`, `egraph`, and `parallel`, so installs stay small and avoid an LLVM runtime dependency. Numeric APIs still work through the interpreter fallback.
+
+There is **no** `pip install alkahest[jit]` / `alkahest[full]` that swaps the native extension: **pip extras only add Python dependencies**, not alternate binaries.
+
+For native LLVM CPU JIT—or JIT plus Gröbner / parallel F4 / egglog—use an opt-in **`+jit`** or **`+full`** Linux wheel from GitHub Releases (below), or [build from source](#from-source). See the repository [`README.md`](https://github.com/alkahest-cas/alkahest/blob/main/README.md) for the same policy in short form.
+
+### Optional Linux wheels (`+jit` / `+full`)
+
+Tagged releases attach **`linux_x86_64`** wheels on [GitHub Releases](https://github.com/alkahest-cas/alkahest/releases) (CI builds them on `ubuntu-22.04`; these are **not** the manylinux wheels published as the default PyPI binaries). Pick the `.whl` whose tags match your Python (`cp311`, etc.) and **`linux_x86_64`**.
+
+| Local version | Cargo features | When to use |
+|---|---|---|
+| `+jit` | `jit` | Native LLVM CPU JIT only (smaller than `+full`). |
+| `+full` | `jit groebner parallel egraph` | JIT plus Gröbner-backed solvers, parallel F4, egglog e-graph backend (typical maximal from-source dev stack). |
+
+Example direct installs (replace **version**, tag, and wheel name using the release asset list):
+
+```bash
+pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.1/alkahest-2.0.1+full-cp311-cp311-linux_x86_64.whl"
+pip install "https://github.com/alkahest-cas/alkahest/releases/download/v2.0.1/alkahest-2.0.1+jit-cp311-cp311-linux_x86_64.whl"
+```
+
+These wheels vendor LLVM and related `.so` files under `site-packages/alkahest.libs/`. If `import alkahest` fails with a missing `libLLVM-*.so` or `libffi-*.so`, prepend that directory to `LD_LIBRARY_PATH` (or install matching system packages).
+
+If your downloader rejects `+` in the URL, percent-encode it in the filename segment (e.g. `2.0.1%2Bfull`).
+
+After `+jit`, `alkahest.jit_is_available()` should be `True`. After `+full`, expect that **and** Gröbner-backed APIs such as `alkahest.solve`.
+
+macOS and Windows `+jit` / `+full` wheels are **not** produced in CI yet; use [building from source](#from-source) there.
+
+**Roadmap:** a small PEP 503 **extras index** URL hosting only `+jit` / `+full` wheels (PyTorch-style `--extra-index-url`). Until then, use PyPI for the default wheel or direct URLs / asset downloads from Releases.
 
 ### From source
 

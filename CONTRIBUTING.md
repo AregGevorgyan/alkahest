@@ -8,8 +8,10 @@ AI agents must follow [`AGENTS.md`](AGENTS.md) instructions.
 
 ## Setup
 
+End-user install commands (PyPI vs optional `+jit` / `+full` wheels, from source) are in [`README.md`](README.md) and the [**Getting started**](https://alkahest-cas.github.io/alkahest/getting-started.html) chapter of the docs.
+
 ```bash
-# Prerequisites: Rust (stable + nightly), Python ≥ 3.9, maturin, LLVM 15
+# Prerequisites: Rust (stable + nightly), Python 3.9–3.13, maturin, LLVM 15, FLINT (see README § Install)
 pip install maturin pytest hypothesis ruff
 maturin develop --manifest-path alkahest-py/Cargo.toml --release --features "jit egraph parallel groebner"
 ```
