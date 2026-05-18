@@ -11,6 +11,8 @@ A high-performance computer algebra system for Python built for both humans and 
 
 **Install:** the package is published on [PyPI](https://pypi.org/project/alkahest/); use `pip install alkahest` (**Python 3.9–3.13**). See [Install](#install) below for optional **`+jit`** / **`+full`** Linux wheels (GitHub Releases or a future extras index) and building from source.
 
+**Demo:** the [`demo-playground/`](demo-playground/) directory contains an interactive web playground with a notebook interface, AI agent chat, and CLI-driven video recording. See [`demo-playground/README.md`](demo-playground/README.md).
+
 **Stack:** Rust kernel → FLINT/Arb (polynomials, ball arithmetic) → egglog (e-graph simplification) → MLIR/LLVM (native and GPU codegen) → PyO3 → Python
 
 ---

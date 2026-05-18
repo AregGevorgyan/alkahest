@@ -1,0 +1,140 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
+import type { OutputItem } from '@/lib/execution';
+
+interface OutputProps {
+  items: OutputItem[];
+}
+
+export default function Output({ items }: OutputProps) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="border-t border-ak-border bg-ak-bg px-4 py-2 space-y-1">
+      {items.map((item, i) => (
+        <OutputItemView key={i} item={item} />
+      ))}
+    </div>
+  );
+}
+
+function OutputItemView({ item }: { item: OutputItem }) {
+  if (item.type === 'text') {
+    return (
+      <pre
+        className={`whitespace-pre-wrap font-mono text-sm leading-relaxed ${
+          item.stream === 'stderr' ? 'text-red-600' : 'text-ak-fg'
+        }`}
+      >
+        {item.text}
+      </pre>
+    );
+  }
+
+  if (item.type === 'latex') {
+    return <LatexBlock latex={item.latex} />;
+  }
+
+  if (item.type === 'html') {
+    return <SafeHtml html={item.html} />;
+  }
+
+  if (item.type === 'image') {
+    if (item.format === 'png') {
+      return (
+        <img
+          src={`data:image/png;base64,${item.data}`}
+          alt="output"
+          className="max-w-full rounded"
+          style={{ maxHeight: '480px' }}
+        />
+      );
+    }
+    if (item.format === 'svg') {
+      return (
+        <div
+          className="max-w-full"
+          dangerouslySetInnerHTML={{ __html: item.data }}
+        />
+      );
+    }
+  }
+
+  if (item.type === 'json') {
+    return (
+      <pre className="font-mono text-xs bg-ak-code-bg border border-ak-border rounded p-3 overflow-x-auto">
+        {JSON.stringify(item.data, null, 2)}
+      </pre>
+    );
+  }
+
+  if (item.type === 'error') {
+    return (
+      <div className="rounded border border-red-200 bg-red-50 p-3">
+        <p className="font-mono text-sm font-semibold text-red-700">
+          {item.ename}: {item.evalue}
+        </p>
+        {item.traceback.length > 0 && (
+          <pre className="mt-2 whitespace-pre-wrap font-mono text-xs text-red-600">
+            {item.traceback.join('\n').replace(/\x1b\[[0-9;]*m/g, '')}
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function LatexBlock({ latex }: { latex: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const render = async () => {
+      if (!ref.current) return;
+      try {
+        const katex = (await import('katex')).default;
+        const clean = latex.replace(/^\$\$?|\$\$?$/g, '').trim();
+        katex.render(clean, ref.current, {
+          displayMode: true,
+          throwOnError: false,
+          output: 'html',
+        });
+      } catch {
+        if (ref.current) ref.current.textContent = latex;
+      }
+    };
+    render();
+  }, [latex]);
+
+  return <div ref={ref} className="py-1 overflow-x-auto" />;
+}
+
+function SafeHtml({ html }: { html: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const render = async () => {
+      if (!ref.current) return;
+      const { default: DOMPurify } = await import('dompurify');
+      ref.current.innerHTML = DOMPurify.sanitize(html);
+
+      // Post-process any LaTeX in the HTML using KaTeX auto-render
+      const katex = (await import('katex')).default;
+      const renderMathInElement = (await import('katex/contrib/auto-render')).default;
+      renderMathInElement(ref.current, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true },
+        ],
+        throwOnError: false,
+      });
+    };
+    render();
+  }, [html]);
+
+  return <div ref={ref} className="text-sm" />;
+}

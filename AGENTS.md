@@ -3,6 +3,20 @@
 * If asked to fix CI: check CI status using `gh` CLI if available, otherwise check https://github.com/alkahest-cas/alkahest/
 * If asked to generate a report: write it to `tmp/`, include at the top — the date, the agent and model writing it (e.g. "Claude Code claude-sonnet-4-6"), and the full git commit hash being reviewed
 
+## Demo playground
+
+[`demo-playground/`](demo-playground/) contains an interactive web app for demoing and recording Alkahest. It has a notebook interface, an AI agent chat mode, and a CLI for orchestrating and recording demos as video.
+
+Quick start (requires Node ≥ 18 with pnpm, and Python ≥ 3.9):
+```bash
+cd demo-playground
+cp .env.example web/.env.local   # add API key
+pnpm install
+pnpm start                        # starts web (port 3000) + Python server (port 8000)
+```
+
+See [`demo-playground/README.md`](demo-playground/README.md) for full documentation.
+
 ## Build
 
 ```bash

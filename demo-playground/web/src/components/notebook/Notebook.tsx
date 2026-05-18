@@ -1,0 +1,288 @@
+'use client';
+
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { v4 as uuid } from 'uuid';
+import Cell, { type CellData } from './Cell';
+import type { OutputItem, ExecutionMode } from '@/lib/execution';
+import {
+  needsServer,
+  createSession,
+  destroySession,
+  installWheel,
+  executeOnServer,
+  executeInWasm,
+} from '@/lib/execution';
+import { loadConfig } from '@/components/ui/Settings';
+
+// ── State ──────────────────────────────────────────────────────────────────
+
+type Action =
+  | { type: 'ADD_CELL'; afterId?: string }
+  | { type: 'REMOVE_CELL'; id: string }
+  | { type: 'SET_CODE'; id: string; code: string }
+  | { type: 'SET_STATUS'; id: string; status: CellData['status'] }
+  | { type: 'SET_BACKEND'; id: string; backend: CellData['backend'] }
+  | { type: 'APPEND_OUTPUT'; id: string; item: OutputItem }
+  | { type: 'CLEAR_OUTPUTS'; id: string }
+  | { type: 'SET_EXEC_COUNT'; id: string; count: number }
+  | { type: 'MOVE_UP'; id: string }
+  | { type: 'MOVE_DOWN'; id: string };
+
+function newCell(code = ''): CellData {
+  return { id: uuid(), code, outputs: [], status: 'idle', executionCount: null, backend: null };
+}
+
+function reducer(state: CellData[], action: Action): CellData[] {
+  switch (action.type) {
+    case 'ADD_CELL': {
+      const idx = action.afterId ? state.findIndex((c) => c.id === action.afterId) : state.length - 1;
+      const next = [...state];
+      next.splice(idx + 1, 0, newCell());
+      return next;
+    }
+    case 'REMOVE_CELL':
+      return state.length === 1 ? [newCell()] : state.filter((c) => c.id !== action.id);
+    case 'SET_CODE':
+      return state.map((c) => (c.id === action.id ? { ...c, code: action.code } : c));
+    case 'SET_STATUS':
+      return state.map((c) => (c.id === action.id ? { ...c, status: action.status } : c));
+    case 'SET_BACKEND':
+      return state.map((c) => (c.id === action.id ? { ...c, backend: action.backend } : c));
+    case 'APPEND_OUTPUT':
+      return state.map((c) =>
+        c.id === action.id ? { ...c, outputs: [...c.outputs, action.item] } : c,
+      );
+    case 'CLEAR_OUTPUTS':
+      return state.map((c) => (c.id === action.id ? { ...c, outputs: [] } : c));
+    case 'SET_EXEC_COUNT':
+      return state.map((c) => (c.id === action.id ? { ...c, executionCount: action.count } : c));
+    case 'MOVE_UP': {
+      const i = state.findIndex((c) => c.id === action.id);
+      if (i <= 0) return state;
+      const next = [...state];
+      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      return next;
+    }
+    case 'MOVE_DOWN': {
+      const i = state.findIndex((c) => c.id === action.id);
+      if (i >= state.length - 1) return state;
+      const next = [...state];
+      [next[i], next[i + 1]] = [next[i + 1], next[i]];
+      return next;
+    }
+    default:
+      return state;
+  }
+}
+
+const INITIAL_CELLS: CellData[] = [
+  newCell(
+    `import alkahest as ak
+from alkahest import latex
+
+pool = ak.ExprPool()
+x = pool.symbol("x")
+two = pool.integer(2)
+
+expr = x ** two
+result = ak.diff(pool, expr, x)
+print(f"d/dx x² = $${latex(result.value)}$$")
+`,
+  ),
+  newCell(
+    `# Compare with SymPy
+from sympy import symbols, diff, latex as sp_latex
+
+x = symbols('x')
+expr = x**2
+result = diff(expr, x)
+print(f"SymPy: $${sp_latex(result)}$$")
+`,
+  ),
+];
+
+// ── Component ─────────────────────────────────────────────────────────────
+
+export default function Notebook() {
+  const [cells, dispatch] = useReducer(reducer, INITIAL_CELLS);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [serverStatus, setServerStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
+  const [execCount, setExecCount] = useState(0);
+  const cfg = useRef(loadConfig());
+  const cleanupFns = useRef<Map<string, () => void>>(new Map());
+
+  // Create kernel session on mount
+  useEffect(() => {
+    const { serverHttpUrl } = cfg.current;
+    (async () => {
+      try {
+        const id = await createSession(serverHttpUrl);
+        setSessionId(id);
+        setServerStatus('online');
+      } catch {
+        setServerStatus('offline');
+      }
+    })();
+    return () => {
+      if (sessionId) destroySession(cfg.current.serverHttpUrl, sessionId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runCell = useCallback(
+    (id: string) => {
+      const cell = cells.find((c) => c.id === id);
+      if (!cell || cell.status === 'running') return;
+
+      // Cancel any existing execution for this cell
+      cleanupFns.current.get(id)?.();
+      cleanupFns.current.delete(id);
+
+      dispatch({ type: 'CLEAR_OUTPUTS', id });
+      dispatch({ type: 'SET_STATUS', id, status: 'running' });
+
+      const mode = cfg.current.executionMode as ExecutionMode;
+      const useServer = mode === 'server' || (mode !== 'wasm' && needsServer(cell.code));
+
+      if (useServer) {
+        dispatch({ type: 'SET_BACKEND', id, backend: 'server' });
+
+        if (!sessionId) {
+          dispatch({
+            type: 'APPEND_OUTPUT',
+            id,
+            item: { type: 'error', ename: 'NoSession', evalue: 'Server not connected. Check settings.', traceback: [] },
+          });
+          dispatch({ type: 'SET_STATUS', id, status: 'error' });
+          return;
+        }
+
+        const count = execCount + 1;
+        setExecCount(count);
+
+        const cancel = executeOnServer(
+          cfg.current.serverWsUrl,
+          sessionId,
+          cell.code,
+          (item) => dispatch({ type: 'APPEND_OUTPUT', id, item }),
+          (n) => {
+            dispatch({ type: 'SET_EXEC_COUNT', id, count: n });
+            dispatch({ type: 'SET_STATUS', id, status: 'done' });
+            cleanupFns.current.delete(id);
+          },
+          (err) => {
+            dispatch({
+              type: 'APPEND_OUTPUT',
+              id,
+              item: { type: 'error', ename: 'ExecutionError', evalue: err, traceback: [] },
+            });
+            dispatch({ type: 'SET_STATUS', id, status: 'error' });
+          },
+        );
+        cleanupFns.current.set(id, cancel);
+      } else {
+        dispatch({ type: 'SET_BACKEND', id, backend: 'wasm' });
+
+        executeInWasm(cell.code)
+          .then((outputs) => {
+            outputs.forEach((item) => dispatch({ type: 'APPEND_OUTPUT', id, item }));
+            const n = execCount + 1;
+            setExecCount(n);
+            dispatch({ type: 'SET_EXEC_COUNT', id, count: n });
+            dispatch({ type: 'SET_STATUS', id, status: 'done' });
+          })
+          .catch((err: Error) => {
+            dispatch({
+              type: 'APPEND_OUTPUT',
+              id,
+              item: { type: 'error', ename: 'WasmError', evalue: err.message, traceback: [] },
+            });
+            dispatch({ type: 'SET_STATUS', id, status: 'error' });
+          });
+      }
+    },
+    [cells, sessionId, execCount],
+  );
+
+  async function handleWheelUpload(file: File) {
+    if (!sessionId) return alert('Server not connected');
+    try {
+      await installWheel(cfg.current.serverHttpUrl, sessionId, file);
+      alert(`Installed ${file.name} successfully.`);
+    } catch (e) {
+      alert(`Wheel install failed: ${e}`);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-6 space-y-3">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => dispatch({ type: 'ADD_CELL' })}
+          className="flex items-center gap-1.5 rounded border border-ak-border px-3 py-1.5 text-xs hover:bg-ak-code-bg transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+          Add cell
+        </button>
+
+        <button
+          onClick={() => {
+            const promise = cells.reduce((p, c) => p.then(() => {
+              return new Promise<void>((res) => {
+                runCell(c.id);
+                // Small delay between cells
+                setTimeout(res, 300);
+              });
+            }), Promise.resolve());
+            void promise;
+          }}
+          className="flex items-center gap-1.5 rounded border border-ak-border px-3 py-1.5 text-xs hover:bg-ak-code-bg transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Run all
+        </button>
+
+        <label className="flex items-center gap-1.5 rounded border border-ak-border px-3 py-1.5 text-xs cursor-pointer hover:bg-ak-code-bg transition-colors">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          Install wheel
+          <input type="file" accept=".whl" className="hidden" onChange={(e) => e.target.files?.[0] && handleWheelUpload(e.target.files[0])} />
+        </label>
+
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-1.5 text-xs text-ak-muted">
+          <span
+            className={`h-2 w-2 rounded-full ${
+              serverStatus === 'online' ? 'bg-green-500' : serverStatus === 'offline' ? 'bg-red-400' : 'bg-ak-border'
+            }`}
+          />
+          {serverStatus === 'online' ? 'server ready' : serverStatus === 'offline' ? 'server offline' : 'connecting…'}
+        </div>
+      </div>
+
+      {/* Cells */}
+      {cells.map((cell, i) => (
+        <Cell
+          key={cell.id}
+          cell={cell}
+          index={i}
+          onCodeChange={(id, code) => dispatch({ type: 'SET_CODE', id, code })}
+          onRun={runCell}
+          onDelete={(id) => dispatch({ type: 'REMOVE_CELL', id })}
+          onMoveUp={(id) => dispatch({ type: 'MOVE_UP', id })}
+          onMoveDown={(id) => dispatch({ type: 'MOVE_DOWN', id })}
+          onAddBelow={(id) => dispatch({ type: 'ADD_CELL', afterId: id })}
+        />
+      ))}
+
+      {/* Add cell footer */}
+      <button
+        onClick={() => dispatch({ type: 'ADD_CELL' })}
+        className="w-full rounded border border-dashed border-ak-border py-2 text-xs text-ak-muted hover:border-ak-muted hover:text-ak-fg transition-colors"
+      >
+        + add cell
+      </button>
+    </div>
+  );
+}
