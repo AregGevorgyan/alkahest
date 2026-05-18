@@ -3,6 +3,8 @@ node_modules/
 dist/
 *.env
 !*.env.example
+demo-videos/*
+!demo-videos/.gitkeep
 recordings/
 __pycache__/
 *.pyc
