@@ -2,6 +2,13 @@
 
 Use this skill whenever you are writing Python code that uses the `alkahest` library.
 
+## Official links
+
+- **Repository:** [github.com/alkahest-cas/alkahest](https://github.com/alkahest-cas/alkahest)
+- **Website:** [alkahest-cas.github.io/](https://alkahest-cas.github.io/)
+- **Documentation:** [alkahest-cas.github.io/alkahest/](https://alkahest-cas.github.io/alkahest/)
+- **API reference:** [alkahest-cas.github.io/alkahest/api/](https://alkahest-cas.github.io/alkahest/api/)
+
 ## Install
 
 **Python:** 3.9–3.13 (`requires-python` on PyPI).
