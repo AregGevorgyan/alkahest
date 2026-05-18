@@ -375,7 +375,9 @@ print(cs.coordinates, cs.smale_certified, cs.enclosures())
 ```python
 import alkahest as ak
 
-@ak.trace
+pool = ak.ExprPool()
+
+@ak.trace(pool)
 def f(x):
     return ak.sin(x ** 2)
 

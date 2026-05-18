@@ -4,14 +4,19 @@ Use this skill whenever you are writing Python code that uses the `alkahest` lib
 
 ## Install
 
+**Python:** 3.9–3.13 (`requires-python` on PyPI).
+
 ```bash
 pip install alkahest
 ```
 
-Source build (for optional features like JIT, Gröbner, CUDA — see README):
+Default PyPI wheels omit the LLVM JIT and the `groebner` / `egraph` / `parallel` Cargo features (smaller binaries, no LLVM runtime dependency). Numeric paths still work via the interpreter; use `jit_is_available()` to see whether native JIT is present, or install a `+jit` / `+full` Linux wheel or build from source (see repo `README.md`).
+
+Source build from the repository root (JIT, Gröbner, egglog, parallel — optional `cuda`):
 
 ```bash
-pip install maturin && maturin develop --release --features "parallel egraph jit groebner"
+pip install maturin
+maturin develop --release --manifest-path alkahest-py/Cargo.toml --features "parallel egraph jit groebner"
 ```
 
 ---
@@ -173,19 +178,25 @@ rf = RationalFunction.from_symbolic(x**2 + pool.integer(-1), x + pool.integer(-1
 
 ## Polynomial system solver / Gröbner basis
 
-Available when built with `--features groebner`.
+Available when the native extension is built with `--features groebner` (otherwise `ImportError` for `solve` / `GroebnerBasis` / …).
 
 ```python
-from alkahest import solve, GroebnerBasis, GbPoly
+from alkahest import solve, solve_numerical, GroebnerBasis, GbPoly
 
-# solve returns list[dict[Expr, float]]
+# solve(equations, vars, *, numeric=False, method="groebner")
+# - method="groebner" (default): Lex/triangular path. Each finite solution is a dict
+#   mapping variable Expr → Expr (symbolic) or float if numeric=True.
+# - method="homotopy": numerical continuation in ℂⁿ; dict values are float.
+# - If the ideal is parametric / not zero-dimensional finite, Groebner mode may
+#   return a GroebnerBasis instead of a list of dicts.
 solutions = solve(
-    [x**2 + y**2 + pool.integer(-1), y + pool.integer(-1)*x],  # equations = 0
+    [x**2 + y**2 + pool.integer(-1), y + pool.integer(-1)*x],
     [x, y],
 )
 for s in solutions:
-    xv = s[x]  # float
-    yv = s[y]
+    xv, yv = s[x], s[y]
+
+# Certified enclosures / residuals: solve_numerical(eqs, vars, ...)
 ```
 
 ---
@@ -193,9 +204,11 @@ for s in solutions:
 ## JIT compilation and numeric evaluation
 
 ```python
-from alkahest import compile_expr, eval_expr, CompiledFn
+from alkahest import compile_expr, eval_expr, CompiledFn, jit_is_available
 
-# Compile expression to LLVM JIT
+jit_is_available()   # False on default PyPI wheel; True with JIT-enabled build
+
+# Compile expression to LLVM JIT (falls back to interpreter if JIT unavailable)
 f = compile_expr(x**2 + pool.integer(1), [x])   # CompiledFn
 f([3.0])          # → [10.0]  (list in, list out)
 f.n_inputs        # 1
@@ -203,12 +216,12 @@ f.n_inputs        # 1
 # Interpreter (no JIT)
 val = eval_expr(x**2 + y, {x: 3.0, y: 1.0})  # float
 
-# Vectorised NumPy evaluation
+# Vectorised evaluation (DLPack): NumPy, JAX, PyTorch CPU tensors, etc.
 import numpy as np
 from alkahest import numpy_eval
 
 xs = np.linspace(0, 1, 1_000_000)
-ys = numpy_eval(f, xs)   # → ndarray; uses DLPack, ≥100× faster than a loop
+ys = numpy_eval(f, xs)   # ndarray; much faster than a Python loop
 ```
 
 ---
@@ -363,6 +376,9 @@ All errors inherit `AlkahestError` and carry `.code`, `.remediation`, `.span`.
 | `JitError` | `E-JIT-*` | JIT compilation failed |
 | `SolverError` | `E-SOLVE-*` | Polynomial solver failed |
 | `IoError` | `E-IO-*` | Pool checkpoint I/O |
+| `NumberTheoryError` | `E-NT-*` | Invalid input to number-theory helpers |
+| `ParseError` | `E-PARSE-*` | String parse failures |
+| `RsolveError` | `E-RSOLVE-*` | Recurrence / `rsolve` failures |
 
 ```python
 from alkahest import ConversionError, IntegrationError
@@ -399,6 +415,32 @@ mapped = map_exprs(lambda e: diff(e, x).value, {"f": f_expr})
 
 ---
 
+## Parsing and pretty-printing
+
+```python
+from alkahest import parse, latex, unicode_str, ParseError
+
+e = parse("x^2 + 2*x + 1", pool, {"x": x})
+latex(e)
+unicode_str(e)
+```
+
+---
+
+## Summation, products, number theory
+
+- Discrete summation: `sum_indefinite`, `sum_definite`, `verify_wz_pair`; linear recurrences: `solve_linear_recurrence_homogeneous`, `rsolve`.
+- Symbolic products: `Product`, `product_indefinite`, `product_definite`.
+- Integer number theory (FLINT-backed): `alkahest.number_theory` (`isprime`, `factorint`, `discrete_log`, …).
+
+---
+
+## Stable vs experimental API
+
+Semantics-stable symbols are those in `alkahest.__all__` (and Rust `alkahest_core::stable`). New or unstable Python APIs live under `alkahest.experimental` and may change in minor releases—prefer top-level exports for agent-written code unless the user asks for experimental features.
+
+---
+
 ## Primitive registry
 
 ```python
@@ -417,8 +459,8 @@ reg = PrimitiveRegistry()
 3. **Read `.value` for the expression.** Top-level operations return `DerivedResult`, not `Expr`.
 4. **Use specific simplifiers.** Prefer `simplify_trig`, `simplify_log_exp`, `collect_like_terms` over the catch-all `simplify` when the structure is known — it is faster.
 5. **Polynomial conversions raise.** `UniPoly.from_symbolic` and `poly_normal` raise `ConversionError` for non-polynomial input — catch it.
-6. **`solve` requires the groebner feature.** Import-guard it or catch `ImportError`.
-7. **`trace` requires a pool argument.** `@alkahest.trace(pool)` — the pool is mandatory.
-8. **`grad` and `jit` require a `TracedFn`.** They raise `TypeError` on plain callables.
+6. **`solve` / Gröbner-side APIs require the groebner feature.** Import-guard or catch `ImportError`. Egglog simplifiers need a build with `egraph` (`HAS_EGRAPH`).
+7. **`trace` requires a pool argument.** Use `@alkahest.trace(pool)` (or `trace_fn(fn, pool)`). `@alkahest.trace` alone is invalid.
+8. **`grad` expects a `TracedFn`.** `jit` accepts a `TracedFn` or `GradTracedFn`; both raise `TypeError` on undecorated callables.
 9. **`numpy_eval` expects a `CompiledFn`** (from `compile_expr`), not a `TracedFn`.
 10. **Symbols from different pools are incompatible.** Keep one pool per computation graph.
