@@ -195,7 +195,7 @@ Non-homogeneous **order > 2** and sequences with **polynomial coefficients** in 
 
 ### Symbolic products (`∏`)
 
-`product_definite(term, k, lo, hi)` closes \(\prod_{i=\texttt{lo}}^{\texttt{hi}} \texttt{term}(i)\) (inclusive) when `term` simplifies to **ℚ(`k`)** whose numerator/denominator **factor into ℤ-linear** polynomials — the implementation expands each linear factor \(\alpha k+\beta\) with \(\Gamma\) shifts \(\Gamma(\texttt{hi}+\beta/\alpha+1)/\Gamma(\texttt{lo}+\beta/\alpha)\) and collects \(\alpha^{(\texttt{hi}-\texttt{lo}+1)\cdot e}\). `product_indefinite` returns a `Γ`/power witness `Z(k)` with `simplify`-stable ratio `Z(k+1)/Z(k)=term`. `Product(term, (k, lo, hi)).doit()` matches SymPy ergonomics (`DerivedResult`; use `.value`). Irreducible quadratics in `k`, extra symbols besides `k`, and non-integer powers are rejected (`ProductError` / `E-PROD-*`).
+`product_definite(term, k, lo, hi)` closes $\prod_{i=\text{lo}}^{\text{hi}} \text{term}(i)$ (inclusive) when `term` simplifies to **ℚ(`k`)** whose numerator/denominator **factor into ℤ-linear** polynomials — the implementation expands each linear factor $\alpha k+\beta$ with $\Gamma$ shifts $\Gamma(\text{hi}+\beta/\alpha+1)/\Gamma(\text{lo}+\beta/\alpha)$ and collects $\alpha^{(\text{hi}-\text{lo}+1)\cdot e}$. `product_indefinite` returns a `Γ`/power witness `Z(k)` with `simplify`-stable ratio `Z(k+1)/Z(k)=term`. `Product(term, (k, lo, hi)).doit()` matches SymPy ergonomics (`DerivedResult`; use `.value`). Irreducible quadratics in `k`, extra symbols besides `k`, and non-integer powers are rejected (`ProductError` / `E-PROD-*`).
 
 ```python
 import alkahest as ak

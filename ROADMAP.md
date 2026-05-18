@@ -18,7 +18,6 @@
 Items in rough priority order. None are committed to a specific release date.
 
 ### Near-term
-- **PyPI wheel publishing** — manylinux 2_28 / macOS arm64 / Windows GNU wheel matrix via `release.yml`; default uploads exclude LLVM **`+jit`** and **full-stack `+full`** builds (GitHub Release assets + future PEP 503 “extra index” — see README)
 - **Full Gruntz limits** — comparability-graph algorithm for general transcendental sequences; Lean `Filter.Tendsto` certificates (current implementation uses prototype L'Hôpital rules)
 - **Polyhedral / mixed-volume homotopy** — needed for deficient systems whose affine root count is below the Bézout bound (e.g. Katsura family)
 

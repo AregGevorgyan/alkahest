@@ -35,6 +35,7 @@ program
   .option('-c, --code <file>', 'Python file to inject into cells')
   .option('-o, --output <file>', 'Output video file', path.join(VIDEOS_DIR, `alkahest-demo-${Date.now()}.webm`))
   .option('--url <url>', 'Playground URL', 'http://localhost:3000')
+  .option('--server-url <url>', 'Python execution server URL (for health checks)', 'http://localhost:8787')
   .option('--width <px>', 'Viewport width', '1280')
   .option('--height <px>', 'Viewport height', '720')
   .option('--delay <ms>', 'Delay between typing characters (ms)', '40')

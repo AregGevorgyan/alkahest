@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Settings from './Settings';
 
@@ -10,20 +10,44 @@ interface NavProps {
   isRecording?: boolean;
   onToggleRecording?: () => void;
   serverStatus?: 'unknown' | 'online' | 'offline';
+  zenMode?: boolean;
 }
 
-export default function Nav({ isRecording, onToggleRecording, serverStatus = 'unknown' }: NavProps) {
+export default function Nav({ isRecording, onToggleRecording, serverStatus = 'unknown', zenMode }: NavProps) {
   const pathname = usePathname();
   const [showSettings, setShowSettings] = useState(false);
+  const [zenVisible, setZenVisible] = useState(false);
+  const zenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!zenMode) return;
+    function handleMouseMove() {
+      setZenVisible(true);
+      if (zenTimerRef.current) clearTimeout(zenTimerRef.current);
+      zenTimerRef.current = setTimeout(() => setZenVisible(false), 2000);
+    }
+    document.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      if (zenTimerRef.current) clearTimeout(zenTimerRef.current);
+    };
+  }, [zenMode]);
 
   const statusColor =
     serverStatus === 'online' ? 'bg-green-500' :
     serverStatus === 'offline' ? 'bg-red-400' :
     'bg-ak-border';
 
+  const navHidden = zenMode && !zenVisible;
+
   return (
     <>
-      <nav className="sticky top-0 z-40 border-b border-ak-border bg-ak-bg/95 backdrop-blur-sm">
+      <nav
+        className={clsx(
+          'sticky top-0 z-40 border-b border-ak-border bg-ak-bg/95 backdrop-blur-sm transition-opacity duration-300',
+          navHidden && 'opacity-0 pointer-events-none',
+        )}
+      >
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 font-semibold text-ak-fg no-underline">

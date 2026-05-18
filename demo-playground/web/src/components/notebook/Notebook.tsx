@@ -17,7 +17,7 @@ import { loadConfig } from '@/components/ui/Settings';
 // ── State ──────────────────────────────────────────────────────────────────
 
 type Action =
-  | { type: 'ADD_CELL'; afterId?: string }
+  | { type: 'ADD_CELL'; afterId?: string; cellType?: CellData['cellType'] }
   | { type: 'REMOVE_CELL'; id: string }
   | { type: 'SET_CODE'; id: string; code: string }
   | { type: 'SET_STATUS'; id: string; status: CellData['status'] }
@@ -26,10 +26,11 @@ type Action =
   | { type: 'CLEAR_OUTPUTS'; id: string }
   | { type: 'SET_EXEC_COUNT'; id: string; count: number }
   | { type: 'MOVE_UP'; id: string }
-  | { type: 'MOVE_DOWN'; id: string };
+  | { type: 'MOVE_DOWN'; id: string }
+  | { type: 'TOGGLE_CELL_TYPE'; id: string };
 
-function newCell(code = ''): CellData {
-  return { id: uuid(), code, outputs: [], status: 'idle', executionCount: null, backend: null };
+function newCell(code = '', cellType: CellData['cellType'] = 'code'): CellData {
+  return { id: uuid(), code, outputs: [], status: 'idle', executionCount: null, backend: null, cellType };
 }
 
 function reducer(state: CellData[], action: Action): CellData[] {
@@ -37,7 +38,7 @@ function reducer(state: CellData[], action: Action): CellData[] {
     case 'ADD_CELL': {
       const idx = action.afterId ? state.findIndex((c) => c.id === action.afterId) : state.length - 1;
       const next = [...state];
-      next.splice(idx + 1, 0, newCell());
+      next.splice(idx + 1, 0, newCell('', action.cellType ?? 'code'));
       return next;
     }
     case 'REMOVE_CELL':
@@ -70,6 +71,12 @@ function reducer(state: CellData[], action: Action): CellData[] {
       [next[i], next[i + 1]] = [next[i + 1], next[i]];
       return next;
     }
+    case 'TOGGLE_CELL_TYPE':
+      return state.map((c) =>
+        c.id === action.id
+          ? { ...c, cellType: c.cellType === 'markdown' ? 'code' : 'markdown', outputs: [], status: 'idle', executionCount: null, backend: null }
+          : c,
+      );
     default:
       return state;
   }
@@ -113,7 +120,12 @@ function cellsFromUrlParam(): CellData[] | null {
 
 // ── Component ─────────────────────────────────────────────────────────────
 
-export default function Notebook() {
+interface NotebookProps {
+  zenMode?: boolean;
+  onServerStatusChange?: (status: 'unknown' | 'online' | 'offline') => void;
+}
+
+export default function Notebook({ zenMode, onServerStatusChange }: NotebookProps = {}) {
   const [cells, dispatch] = useReducer(reducer, null, () => cellsFromUrlParam() ?? INITIAL_CELLS);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
@@ -141,6 +153,7 @@ export default function Notebook() {
         const id = await createSession(serverHttpUrl);
         setSessionId(id);
         setServerStatus('online');
+        onServerStatusChange?.('online');
         if (autoRun) {
           // Small delay to let the UI settle, then run all cells sequentially
           setTimeout(() => {
@@ -149,6 +162,7 @@ export default function Notebook() {
         }
       } catch {
         setServerStatus('offline');
+        onServerStatusChange?.('offline');
       }
     })();
     return () => {
@@ -184,7 +198,7 @@ export default function Notebook() {
   const runCell = useCallback(
     (id: string) => {
       const cell = cells.find((c) => c.id === id);
-      if (!cell || cell.status === 'running') return;
+      if (!cell || cell.status === 'running' || cell.cellType === 'markdown') return;
 
       // Cancel any existing execution for this cell
       cleanupFns.current.get(id)?.();
@@ -268,14 +282,22 @@ export default function Notebook() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 space-y-3">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* Toolbar — hidden in zen mode */}
+      {!zenMode && <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => dispatch({ type: 'ADD_CELL' })}
           className="flex items-center gap-1.5 rounded border border-ak-border px-3 py-1.5 text-xs hover:bg-ak-code-bg transition-colors"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-          Add cell
+          Add code
+        </button>
+
+        <button
+          onClick={() => dispatch({ type: 'ADD_CELL', cellType: 'markdown' })}
+          className="flex items-center gap-1.5 rounded border border-ak-border px-3 py-1.5 text-xs hover:bg-ak-code-bg transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h8M4 18h16"/></svg>
+          Add markdown
         </button>
 
         <button
@@ -311,7 +333,7 @@ export default function Notebook() {
           />
           {serverStatus === 'online' ? 'server ready' : serverStatus === 'offline' ? 'server offline' : 'connecting…'}
         </div>
-      </div>
+      </div>}
 
       {/* Cells */}
       {cells.map((cell, i) => (
@@ -325,16 +347,20 @@ export default function Notebook() {
           onMoveUp={(id) => dispatch({ type: 'MOVE_UP', id })}
           onMoveDown={(id) => dispatch({ type: 'MOVE_DOWN', id })}
           onAddBelow={(id) => dispatch({ type: 'ADD_CELL', afterId: id })}
+          onToggleCellType={(id) => dispatch({ type: 'TOGGLE_CELL_TYPE', id })}
+          zenMode={zenMode}
         />
       ))}
 
-      {/* Add cell footer */}
-      <button
-        onClick={() => dispatch({ type: 'ADD_CELL' })}
-        className="w-full rounded border border-dashed border-ak-border py-2 text-xs text-ak-muted hover:border-ak-muted hover:text-ak-fg transition-colors"
-      >
-        + add cell
-      </button>
+      {/* Add cell footer — hidden in zen mode */}
+      {!zenMode && (
+        <button
+          onClick={() => dispatch({ type: 'ADD_CELL' })}
+          className="w-full rounded border border-dashed border-ak-border py-2 text-xs text-ak-muted hover:border-ak-muted hover:text-ak-fg transition-colors"
+        >
+          + add cell
+        </button>
+      )}
     </div>
   );
 }

@@ -1,9 +1,30 @@
 import type { Config } from 'tailwindcss';
+import typography from '@tailwindcss/typography';
 
 const config: Config = {
   content: ['./src/**/*.{ts,tsx,js,jsx}'],
   theme: {
     extend: {
+      typography: {
+        DEFAULT: {
+          css: {
+            '--tw-prose-body': '#111111',
+            '--tw-prose-headings': '#111111',
+            '--tw-prose-code': '#c41e3a',
+            '--tw-prose-pre-bg': '#eeede7',
+            '--tw-prose-links': '#c41e3a',
+            '--tw-prose-bold': '#111111',
+            '--tw-prose-counters': '#525252',
+            '--tw-prose-bullets': '#525252',
+            '--tw-prose-hr': '#e0ded6',
+            '--tw-prose-quotes': '#525252',
+            '--tw-prose-quote-borders': '#e0ded6',
+            '--tw-prose-captions': '#525252',
+            '--tw-prose-th-borders': '#e0ded6',
+            '--tw-prose-td-borders': '#e0ded6',
+          },
+        },
+      },
       colors: {
         ak: {
           bg: '#f6f5f2',
@@ -25,7 +46,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [typography],
 };
 
 export default config;

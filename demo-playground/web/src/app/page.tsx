@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Nav from '@/components/ui/Nav';
 
@@ -10,7 +10,13 @@ const Notebook = dynamic(() => import('@/components/notebook/Notebook'), { ssr: 
 export default function NotebookPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [chunks, setChunks] = useState<BlobPart[]>([]);
+  const [serverStatus, setServerStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
+  const [zenMode, setZenMode] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('zen') === '1') setZenMode(true);
+  }, []);
 
   async function toggleRecording() {
     if (isRecording) {
@@ -36,7 +42,6 @@ export default function NotebookPage() {
         };
         mr.start(1000);
         setMediaRecorder(mr);
-        setChunks(localChunks);
         setIsRecording(true);
       } catch {
         alert('Screen capture not available or permission denied.');
@@ -46,9 +51,17 @@ export default function NotebookPage() {
 
   return (
     <>
-      <Nav isRecording={isRecording} onToggleRecording={toggleRecording} />
+      <Nav
+        isRecording={isRecording}
+        onToggleRecording={toggleRecording}
+        serverStatus={serverStatus}
+        zenMode={zenMode}
+      />
       <main>
-        <Notebook />
+        <Notebook
+          zenMode={zenMode}
+          onServerStatusChange={setServerStatus}
+        />
       </main>
     </>
   );

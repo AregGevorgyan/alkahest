@@ -8,6 +8,7 @@ export async function recordCommand(
     code?: string;
     output: string;
     url: string;
+    serverUrl: string;
     width: string;
     height: string;
     delay: string;
@@ -18,15 +19,29 @@ export async function recordCommand(
   const outputDir = path.dirname(outputPath);
   fs.mkdirSync(outputDir, { recursive: true });
 
+  // Health-check the Python server before touching Playwright
+  console.log(chalk.bold('\nRecording notebook demo'));
+  console.log(chalk.dim(`  URL:        ${opts.url}`));
+  console.log(chalk.dim(`  Server:     ${opts.serverUrl}`));
+  console.log(chalk.dim(`  Output:     ${outputPath}`));
+
+  try {
+    const res = await fetch(`${opts.serverUrl}/health`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    console.log(chalk.green('  Server:     online ✓\n'));
+  } catch (e) {
+    console.error(chalk.red(`\n✗ Python server not reachable at ${opts.serverUrl}/health`));
+    console.error(chalk.dim(`  Error: ${e}`));
+    console.error(chalk.dim('  Start the server first: pnpm start   or   bash server/start.sh'));
+    process.exit(1);
+  }
+
   const videoDir = fs.mkdtempSync('/tmp/alkahest-rec-');
   const headless = opts.headless ?? !process.env.DISPLAY;
-
-  console.log(chalk.bold('\nRecording notebook demo'));
-  console.log(chalk.dim(`  URL:      ${opts.url}`));
-  console.log(chalk.dim(`  Output:   ${outputPath}`));
-  console.log(chalk.dim(`  Headless: ${headless}\n`));
+  console.log(chalk.dim(`  Headless: ${headless}`));
 
   // Encode cells into ?demo= URL param so the Notebook pre-populates them
+  // Also inject ?zen=1 (hides toolbar/nav) and ?mode=server (force server execution)
   let targetUrl = opts.url;
   let numCells = 0;
   if (opts.code) {
@@ -34,9 +49,10 @@ export async function recordCommand(
     const cellCodes = raw.split(/\n# ---\n/).map((c) => c.trim()).filter(Boolean);
     numCells = cellCodes.length;
     const encoded = Buffer.from(JSON.stringify(cellCodes)).toString('base64');
-    // Force server mode so continuation cells (no import statement) still hit the kernel
-    targetUrl = `${opts.url}?demo=${encoded}&mode=server`;
-    console.log(chalk.dim(`  Cells: ${numCells}\n`));
+    targetUrl = `${opts.url}?demo=${encoded}&mode=server&zen=1`;
+    console.log(chalk.dim(`  Cells:    ${numCells}\n`));
+  } else {
+    targetUrl = `${opts.url}?zen=1`;
   }
 
   const browser = await chromium.launch({ headless });
@@ -60,15 +76,55 @@ export async function recordCommand(
   await page.click('button:has-text("Run all")');
   console.log(chalk.cyan('  Running cells…'));
 
-  // Wait until every cell spinner is gone (all cells done)
+  // Poll server health while waiting; abort if it goes offline
+  let serverDied = false;
+  const healthInterval = setInterval(async () => {
+    try {
+      const r = await fetch(`${opts.serverUrl}/health`, { signal: AbortSignal.timeout(3000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    } catch {
+      serverDied = true;
+      console.error(chalk.red('\n✗ Server disconnected mid-recording — aborting'));
+    }
+  }, 3000);
+
+  // Wait until every cell spinner is gone (all cells done) or server dies
   await page.waitForFunction(() => {
     return document.querySelectorAll('.animate-spin').length === 0;
   }, { timeout: 60_000, polling: 500 }).catch(() => {
-    console.log(chalk.yellow('  Warning: timed out waiting for cells to finish'));
+    if (!serverDied) console.log(chalk.yellow('  Warning: timed out waiting for cells to finish'));
   });
 
+  clearInterval(healthInterval);
+
+  if (serverDied) {
+    await context.close();
+    await browser.close();
+    process.exit(1);
+  }
+
   // Extra pause — wait for any async output rendering (KaTeX, images)
-  await delay(1500);
+  await delay(1000);
+
+  // Slow-scroll to show all cells and outputs
+  console.log(chalk.cyan('  Scrolling to show all content…'));
+  const pageHeight = await page.evaluate(() => document.body.scrollHeight);
+  const viewportHeight = Number(opts.height);
+  if (pageHeight > viewportHeight) {
+    const scrollSteps = Math.ceil((pageHeight - viewportHeight) / 60);
+    for (let i = 0; i < scrollSteps; i++) {
+      await page.evaluate(() => window.scrollBy(0, 60));
+      await delay(40);
+    }
+    // Hold at the bottom
+    await delay(1200);
+    // Scroll back to top
+    for (let i = scrollSteps; i > 0; i--) {
+      await page.evaluate(() => window.scrollBy(0, -60));
+      await delay(30);
+    }
+    await delay(500);
+  }
 
   console.log(chalk.green('  All cells done — holding final frame'));
   await delay(2000);
