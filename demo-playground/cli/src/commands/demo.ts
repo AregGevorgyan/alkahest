@@ -89,7 +89,9 @@ export async function demoCommand(
     process.exit(1);
   }
 
-  fs.renameSync(path.join(videoDir, videos[0]), outputPath);
+  const src = path.join(videoDir, videos[0]);
+  fs.copyFileSync(src, outputPath);
+  fs.unlinkSync(src);
   try { fs.rmdirSync(videoDir); } catch {}
 
   console.log(chalk.green(`\n✓ Demo saved: ${outputPath}\n`));

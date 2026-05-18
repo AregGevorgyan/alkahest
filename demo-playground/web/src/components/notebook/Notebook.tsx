@@ -75,43 +75,65 @@ function reducer(state: CellData[], action: Action): CellData[] {
   }
 }
 
+// Avoid JS template literals for Python code that contains ${} — use string concat instead
 const INITIAL_CELLS: CellData[] = [
   newCell(
-    `import alkahest as ak
-from alkahest import latex
-
-pool = ak.ExprPool()
-x = pool.symbol("x")
-two = pool.integer(2)
-
-expr = x ** two
-result = ak.diff(pool, expr, x)
-print(f"d/dx x² = $${latex(result.value)}$$")
-`,
+    'import alkahest as ak\n' +
+    'from alkahest import latex\n\n' +
+    'pool = ak.ExprPool()\n' +
+    'x = pool.symbol("x")\n\n' +
+    'expr = x ** 2\n' +
+    'result = ak.diff(expr, x)\n' +
+    'lx = latex(result.value)\n' +
+    'print("d/dx x^2 = $$" + lx + "$$")\n',
   ),
   newCell(
-    `# Compare with SymPy
-from sympy import symbols, diff, latex as sp_latex
-
-x = symbols('x')
-expr = x**2
-result = diff(expr, x)
-print(f"SymPy: $${sp_latex(result)}$$")
-`,
+    '# Compare with SymPy\n' +
+    'from sympy import symbols, diff, latex as sp_latex\n\n' +
+    'x = symbols("x")\n' +
+    'result = diff(x**2, x)\n' +
+    'print("SymPy: $$" + sp_latex(result) + "$$")\n',
   ),
 ];
+
+// ── URL-param cell injection (for CLI-driven demos) ───────────────────────
+
+function cellsFromUrlParam(): CellData[] | null {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const encoded = params.get('demo');
+  if (!encoded) return null;
+  try {
+    const codes: string[] = JSON.parse(atob(encoded));
+    return codes.filter(Boolean).map((code) => newCell(code));
+  } catch {
+    return null;
+  }
+}
 
 // ── Component ─────────────────────────────────────────────────────────────
 
 export default function Notebook() {
-  const [cells, dispatch] = useReducer(reducer, INITIAL_CELLS);
+  const [cells, dispatch] = useReducer(reducer, null, () => cellsFromUrlParam() ?? INITIAL_CELLS);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<'unknown' | 'online' | 'offline'>('unknown');
   const [execCount, setExecCount] = useState(0);
+  const [autoRunPending, setAutoRunPending] = useState(false);
   const cfg = useRef(loadConfig());
   const cleanupFns = useRef<Map<string, () => void>>(new Map());
 
-  // Create kernel session on mount
+  const autoRun = typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('autorun') === '1';
+
+  // ?mode=server|wasm|auto overrides the saved config for this page load
+  if (typeof window !== 'undefined') {
+    const modeParam = new URLSearchParams(window.location.search).get('mode') as ExecutionMode | null;
+    if (modeParam && ['auto', 'wasm', 'server'].includes(modeParam)) {
+      cfg.current = { ...cfg.current, executionMode: modeParam };
+    }
+  }
+
+  // Create kernel session on mount; optionally auto-run all cells
   useEffect(() => {
     const { serverHttpUrl } = cfg.current;
     (async () => {
@@ -119,6 +141,12 @@ export default function Notebook() {
         const id = await createSession(serverHttpUrl);
         setSessionId(id);
         setServerStatus('online');
+        if (autoRun) {
+          // Small delay to let the UI settle, then run all cells sequentially
+          setTimeout(() => {
+            setAutoRunPending(true);
+          }, 800);
+        }
       } catch {
         setServerStatus('offline');
       }
@@ -128,6 +156,30 @@ export default function Notebook() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-run all cells sequentially when triggered by ?autorun=1
+  useEffect(() => {
+    if (!autoRunPending || !sessionId) return;
+    setAutoRunPending(false);
+    let cancelled = false;
+    (async () => {
+      for (const cell of cells) {
+        if (cancelled) break;
+        runCell(cell.id);
+        // Wait for this cell to finish before running the next
+        await new Promise<void>((resolve) => {
+          const interval = setInterval(() => {
+            // We poll — cells state captured here may be stale but runCell updates it
+            resolve();
+          }, 2500);
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          void interval;
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRunPending, sessionId]);
 
   const runCell = useCallback(
     (id: string) => {

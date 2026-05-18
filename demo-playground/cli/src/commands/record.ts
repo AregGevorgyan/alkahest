@@ -11,20 +11,35 @@ export async function recordCommand(
     width: string;
     height: string;
     delay: string;
+    headless?: boolean;
   },
 ) {
   const outputPath = path.resolve(opts.output);
   const outputDir = path.dirname(outputPath);
   fs.mkdirSync(outputDir, { recursive: true });
 
-  // Playwright records to a directory; we'll move the file afterwards
   const videoDir = fs.mkdtempSync('/tmp/alkahest-rec-');
+  const headless = opts.headless ?? !process.env.DISPLAY;
 
   console.log(chalk.bold('\nRecording notebook demo'));
-  console.log(chalk.dim(`  URL: ${opts.url}`));
-  console.log(chalk.dim(`  Output: ${outputPath}\n`));
+  console.log(chalk.dim(`  URL:      ${opts.url}`));
+  console.log(chalk.dim(`  Output:   ${outputPath}`));
+  console.log(chalk.dim(`  Headless: ${headless}\n`));
 
-  const browser = await chromium.launch({ headless: false });
+  // Encode cells into ?demo= URL param so the Notebook pre-populates them
+  let targetUrl = opts.url;
+  let numCells = 0;
+  if (opts.code) {
+    const raw = fs.readFileSync(opts.code, 'utf-8');
+    const cellCodes = raw.split(/\n# ---\n/).map((c) => c.trim()).filter(Boolean);
+    numCells = cellCodes.length;
+    const encoded = Buffer.from(JSON.stringify(cellCodes)).toString('base64');
+    // Force server mode so continuation cells (no import statement) still hit the kernel
+    targetUrl = `${opts.url}?demo=${encoded}&mode=server`;
+    console.log(chalk.dim(`  Cells: ${numCells}\n`));
+  }
+
+  const browser = await chromium.launch({ headless });
   const context = await browser.newContext({
     viewport: { width: Number(opts.width), height: Number(opts.height) },
     recordVideo: {
@@ -34,69 +49,46 @@ export async function recordCommand(
   });
 
   const page = await context.newPage();
-  await page.goto(opts.url, { waitUntil: 'networkidle' });
+  await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30_000 });
+  await page.waitForSelector('.cm-editor', { timeout: 20_000 });
+  console.log(chalk.cyan('  Page loaded'));
 
-  // Wait for the first CodeMirror editor to appear
-  await page.waitForSelector('.cm-editor', { timeout: 15_000 });
-  await delay(1000);
+  // Brief pause so the first frame shows the loaded cells
+  await delay(1500);
 
-  if (opts.code) {
-    const code = fs.readFileSync(opts.code, 'utf-8');
-    const cells = code.split('\n# ---\n'); // split on `# ---` delimiters
+  // Click "Run all" to execute all cells with the notebook's natural stagger
+  await page.click('button:has-text("Run all")');
+  console.log(chalk.cyan('  Running cells…'));
 
-    for (let i = 0; i < cells.length; i++) {
-      const cellCode = cells[i].trim();
+  // Wait until every cell spinner is gone (all cells done)
+  await page.waitForFunction(() => {
+    return document.querySelectorAll('.animate-spin').length === 0;
+  }, { timeout: 60_000, polling: 500 }).catch(() => {
+    console.log(chalk.yellow('  Warning: timed out waiting for cells to finish'));
+  });
 
-      // Add a new cell if this isn't the first one
-      if (i > 0) {
-        await page.click('button[title="Add cell below"]');
-        await delay(300);
-      }
+  // Extra pause — wait for any async output rendering (KaTeX, images)
+  await delay(1500);
 
-      // Focus the last editor
-      const editors = await page.$$('.cm-editor');
-      const editor = editors[editors.length - 1];
-      await editor.click();
-      await delay(200);
-
-      // Type code character by character for visual effect
-      await typeSlowly(page, cellCode, Number(opts.delay));
-      await delay(500);
-
-      // Run the cell
-      await page.keyboard.press('Meta+Enter');
-      await delay(2000); // wait for output
-
-      // Wait for "done" state (execution count badge appears)
-      await page.waitForSelector('[class*="execution"]', { timeout: 30_000 }).catch(() => {});
-      await delay(1000);
-    }
-  }
-
+  console.log(chalk.green('  All cells done — holding final frame'));
   await delay(2000);
 
-  // Close context — this finalizes the video
   await context.close();
   await browser.close();
 
-  // Find and move the recorded video
+  // Move video — use copy+delete to handle cross-device filesystems
   const videos = fs.readdirSync(videoDir).filter((f) => f.endsWith('.webm'));
   if (videos.length === 0) {
-    console.error(chalk.red('No video file found.'));
+    console.error(chalk.red('No video captured.'));
     process.exit(1);
   }
 
-  fs.renameSync(path.join(videoDir, videos[0]), outputPath);
-  fs.rmdirSync(videoDir, { recursive: true } as never);
+  const src = path.join(videoDir, videos[0]);
+  fs.copyFileSync(src, outputPath);
+  fs.unlinkSync(src);
+  try { fs.rmdirSync(videoDir); } catch {}
 
-  console.log(chalk.green(`\n✓ Saved recording: ${outputPath}`));
-}
-
-async function typeSlowly(page: import('playwright').Page, text: string, delayMs: number) {
-  for (const char of text) {
-    await page.keyboard.type(char);
-    await delay(delayMs);
-  }
+  console.log(chalk.green(`\n✓ Saved: ${outputPath}`));
 }
 
 function delay(ms: number) {
