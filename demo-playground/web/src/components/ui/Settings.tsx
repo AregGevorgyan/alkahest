@@ -1,28 +1,53 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  AI_PROVIDERS,
+  defaultModelForProvider,
+  type ProviderId,
+} from '@/lib/ai-providers';
+import { alkahestAuthHeaders, healthPath, type ServerBackend } from '@/lib/server-connection';
+import { isStaticHosting } from '@/lib/hosting';
 
-const PROVIDERS = ['anthropic', 'openai', 'google', 'mistral'] as const;
 const EXECUTION_MODES = ['auto', 'wasm', 'server'] as const;
 
-export type ProviderName = (typeof PROVIDERS)[number];
 export type ExecutionMode = (typeof EXECUTION_MODES)[number];
 
 export interface PlaygroundConfig {
+  serverBackend: ServerBackend;
   serverHttpUrl: string;
   serverWsUrl: string;
+  serverToken: string;
   executionMode: ExecutionMode;
-  aiProvider: ProviderName;
+  aiProvider: ProviderId;
   aiModel: string;
+  aiCustomBaseUrl: string;
+  aiCustomApiKey: string;
 }
 
-const DEFAULT_CONFIG: PlaygroundConfig = {
-  serverHttpUrl: 'http://localhost:8000',
-  serverWsUrl: 'ws://localhost:8000',
-  executionMode: 'auto',
-  aiProvider: 'anthropic',
-  aiModel: 'claude-sonnet-4-6',
-};
+const DEFAULT_CONFIG: PlaygroundConfig = isStaticHosting
+  ? {
+      serverBackend: 'alkahest',
+      serverHttpUrl: '',
+      serverWsUrl: '',
+      serverToken: '',
+      executionMode: 'wasm',
+      aiProvider: 'anthropic',
+      aiModel: 'claude-sonnet-4-6',
+      aiCustomBaseUrl: '',
+      aiCustomApiKey: '',
+    }
+  : {
+      serverBackend: 'alkahest',
+      serverHttpUrl: 'http://localhost:8000',
+      serverWsUrl: 'ws://localhost:8000',
+      serverToken: '',
+      executionMode: 'auto',
+      aiProvider: 'anthropic',
+      aiModel: 'claude-sonnet-4-6',
+      aiCustomBaseUrl: '',
+      aiCustomApiKey: '',
+    };
 
 const STORAGE_KEY = 'alkahest-playground-config';
 
@@ -30,7 +55,9 @@ export function loadConfig(): PlaygroundConfig {
   if (typeof window === 'undefined') return DEFAULT_CONFIG;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? { ...DEFAULT_CONFIG, ...JSON.parse(raw) } : DEFAULT_CONFIG;
+    if (!raw) return DEFAULT_CONFIG;
+    const parsed = JSON.parse(raw) as Partial<PlaygroundConfig>;
+    return { ...DEFAULT_CONFIG, ...parsed };
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -47,6 +74,7 @@ interface SettingsProps {
 export default function Settings({ onClose }: SettingsProps) {
   const [cfg, setCfg] = useState<PlaygroundConfig>(DEFAULT_CONFIG);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  const isCustomEndpoint = cfg.aiProvider === 'openai-compatible';
 
   useEffect(() => {
     setCfg(loadConfig());
@@ -55,18 +83,45 @@ export default function Settings({ onClose }: SettingsProps) {
   function update<K extends keyof PlaygroundConfig>(key: K, value: PlaygroundConfig[K]) {
     setCfg((prev) => {
       const next = { ...prev, [key]: value };
-      // Keep WS URL in sync with HTTP URL if user edits HTTP
       if (key === 'serverHttpUrl') {
         next.serverWsUrl = (value as string).replace(/^https?/, (p) => (p === 'https' ? 'wss' : 'ws'));
+      }
+      if (key === 'aiProvider') {
+        const defaultModel = defaultModelForProvider(value as string);
+        if (defaultModel && (!prev.aiModel || prev.aiModel === defaultModelForProvider(prev.aiProvider))) {
+          next.aiModel = defaultModel;
+        }
       }
       return next;
     });
   }
 
   async function testConnection() {
+    if (!cfg.serverHttpUrl.trim()) {
+      setTestStatus('fail');
+      return;
+    }
     setTestStatus('testing');
     try {
-      const res = await fetch(`${cfg.serverHttpUrl}/health`, { signal: AbortSignal.timeout(3000) });
+      let res: Response;
+      if (cfg.serverBackend === 'jupyter') {
+        res = await fetch('/api/jupyter-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            baseUrl: cfg.serverHttpUrl,
+            token: cfg.serverToken || undefined,
+            path: healthPath('jupyter'),
+            method: 'GET',
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+      } else {
+        res = await fetch(`${cfg.serverHttpUrl}${healthPath('alkahest')}`, {
+          headers: alkahestAuthHeaders(cfg.serverToken),
+          signal: AbortSignal.timeout(3000),
+        });
+      }
       setTestStatus(res.ok ? 'ok' : 'fail');
     } catch {
       setTestStatus('fail');
@@ -76,16 +131,21 @@ export default function Settings({ onClose }: SettingsProps) {
   function handleSave() {
     saveConfig(cfg);
     onClose();
-    // Reload to apply config changes
     window.location.reload();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-lg border border-ak-border bg-ak-bg p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg border border-ak-border bg-ak-bg p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-base font-semibold">Settings</h2>
-          <button onClick={onClose} className="text-ak-muted hover:text-ak-fg">
+          <div>
+            <h2 className="text-base font-semibold">Settings</h2>
+            <p className="text-xs text-ak-muted">Ctrl+/ to toggle</p>
+          </div>
+          <button onClick={onClose} className="text-ak-muted hover:text-ak-fg" aria-label="Close settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -98,21 +158,44 @@ export default function Settings({ onClose }: SettingsProps) {
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ak-muted">
               Execution backend
             </h3>
+            <p className="mb-3 text-xs text-ak-muted">
+              Alkahest server or remote Jupyter (URL + token from jupyter server list). Token stays in this browser.
+            </p>
+            <label className="block text-sm mb-1">Backend type</label>
+            <select
+              value={cfg.serverBackend}
+              onChange={(e) => update('serverBackend', e.target.value as ServerBackend)}
+              className="mb-3 w-full rounded border border-ak-border bg-ak-code-bg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ak-brand"
+            >
+              <option value="alkahest">Alkahest server</option>
+              <option value="jupyter">Jupyter Server</option>
+            </select>
             <label className="block text-sm mb-1">Server URL</label>
-            <div className="flex gap-2">
+            <div className="mb-3 flex gap-2">
               <input
-                type="text"
+                type="url"
                 value={cfg.serverHttpUrl}
                 onChange={(e) => update('serverHttpUrl', e.target.value)}
+                placeholder={cfg.serverBackend === 'jupyter' ? 'https://host:8888' : 'http://localhost:8000'}
                 className="flex-1 rounded border border-ak-border bg-ak-code-bg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ak-brand"
               />
               <button
+                type="button"
                 onClick={testConnection}
                 className="rounded border border-ak-border px-3 py-1.5 text-xs hover:bg-ak-code-bg"
               >
                 {testStatus === 'testing' ? '…' : testStatus === 'ok' ? '✓ OK' : testStatus === 'fail' ? '✗ fail' : 'Test'}
               </button>
             </div>
+            <label className="block text-sm mb-1">Access token</label>
+            <input
+              type="password"
+              value={cfg.serverToken}
+              onChange={(e) => update('serverToken', e.target.value)}
+              placeholder={cfg.serverBackend === 'jupyter' ? 'Jupyter token' : 'Optional Bearer token'}
+              autoComplete="off"
+              className="w-full rounded border border-ak-border bg-ak-code-bg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ak-brand"
+            />
           </section>
 
           <section>
@@ -133,30 +216,59 @@ export default function Settings({ onClose }: SettingsProps) {
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ak-muted">
               Agent AI
             </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm mb-1">Provider</label>
-                <select
-                  value={cfg.aiProvider}
-                  onChange={(e) => update('aiProvider', e.target.value as ProviderName)}
-                  className="w-full rounded border border-ak-border bg-ak-code-bg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ak-brand"
-                >
-                  {PROVIDERS.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
+            <p className="mb-3 text-xs text-ak-muted">
+              API keys are read from server environment variables unless you override them below
+              (OpenAI-compatible only). Keys saved in settings stay in this browser only.
+            </p>
+            <label className="block text-sm mb-1">Provider</label>
+            <select
+              value={cfg.aiProvider}
+              onChange={(e) => update('aiProvider', e.target.value as ProviderId)}
+              className="mb-3 w-full rounded border border-ak-border bg-ak-code-bg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ak-brand"
+            >
+              {AI_PROVIDERS.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+            {isCustomEndpoint && (
+              <div className="mb-3 space-y-3 rounded border border-ak-border bg-ak-code-bg/50 p-3">
+                <div>
+                  <label className="block text-sm mb-1">API base URL</label>
+                  <input
+                    type="url"
+                    value={cfg.aiCustomBaseUrl}
+                    onChange={(e) => update('aiCustomBaseUrl', e.target.value)}
+                    placeholder="https://api.example.com/v1"
+                    className="w-full rounded border border-ak-border bg-ak-bg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ak-brand"
+                  />
+                  <p className="mt-1 text-xs text-ak-muted">
+                    Or set OPENAI_COMPATIBLE_BASE_URL in web/.env.local
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm mb-1">API key (optional)</label>
+                  <input
+                    type="password"
+                    value={cfg.aiCustomApiKey}
+                    onChange={(e) => update('aiCustomApiKey', e.target.value)}
+                    placeholder="sk-..."
+                    autoComplete="off"
+                    className="w-full rounded border border-ak-border bg-ak-bg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ak-brand"
+                  />
+                  <p className="mt-1 text-xs text-ak-muted">
+                    Or set OPENAI_COMPATIBLE_API_KEY in web/.env.local
+                  </p>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm mb-1">Model</label>
-                <input
-                  type="text"
-                  value={cfg.aiModel}
-                  onChange={(e) => update('aiModel', e.target.value)}
-                  className="w-full rounded border border-ak-border bg-ak-code-bg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ak-brand"
-                  placeholder="e.g. claude-sonnet-4-6"
-                />
-              </div>
-            </div>
+            )}
+            <label className="block text-sm mb-1">Model</label>
+            <input
+              type="text"
+              value={cfg.aiModel}
+              onChange={(e) => update('aiModel', e.target.value)}
+              className="w-full rounded border border-ak-border bg-ak-code-bg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ak-brand"
+              placeholder={isCustomEndpoint ? 'e.g. gpt-4o or your-model-id' : 'e.g. claude-sonnet-4-6'}
+            />
           </section>
         </div>
 

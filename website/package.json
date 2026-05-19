@@ -1,0 +1,9 @@
+{
+  "name": "alkahest-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch dev.ts",
+    "build": "bun build.ts"
+  }
+}

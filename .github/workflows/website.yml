@@ -1,0 +1,37 @@
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: website-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Push to alkahest-cas.github.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Verify website build
+        working-directory: website
+        run: bun run build
+
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.WEBSITE_DEPLOY_KEY }}
+          external_repository: alkahest-cas/alkahest-cas.github.io
+          publish_branch: main
+          # GitHub Pages serves index.html + styles.css from the repo root.
+          publish_dir: ./website/src
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'deploy website: ${{ github.sha }}'

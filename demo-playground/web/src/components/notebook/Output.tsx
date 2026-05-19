@@ -11,7 +11,7 @@ export default function Output({ items }: OutputProps) {
   if (items.length === 0) return null;
 
   return (
-    <div className="border-t border-ak-border bg-ak-bg px-4 py-2 space-y-1">
+    <div className="border-t border-ak-border bg-ak-code-bg px-4 py-2 space-y-1">
       {items.map((item, i) => (
         <OutputItemView key={i} item={item} />
       ))}

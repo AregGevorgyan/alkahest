@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -30,6 +30,23 @@ app.add_middleware(
 # Session registry
 sessions: dict[str, KernelSession] = {}
 
+SERVER_TOKEN = os.environ.get("ALKAHEST_SERVER_TOKEN", "").strip()
+
+
+def _extract_token(request: Request) -> str | None:
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return request.query_params.get("token")
+
+
+def _require_token(request: Request) -> None:
+    if not SERVER_TOKEN:
+        return
+    token = _extract_token(request)
+    if token != SERVER_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 
 # ── Health ─────────────────────────────────────────────────────────────────
 
@@ -41,14 +58,16 @@ async def health():
 # ── Sessions ───────────────────────────────────────────────────────────────
 
 @app.post("/sessions")
-async def create_session():
+async def create_session(request: Request):
+    _require_token(request)
     session = KernelSession()
     sessions[session.id] = session
     return {"session_id": session.id}
 
 
 @app.delete("/sessions/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(session_id: str, request: Request):
+    _require_token(request)
     session = sessions.pop(session_id, None)
     if session:
         session.shutdown()
@@ -59,6 +78,11 @@ async def delete_session(session_id: str):
 
 @app.websocket("/ws/{session_id}")
 async def ws_execute(websocket: WebSocket, session_id: str):
+    if SERVER_TOKEN:
+        token = websocket.query_params.get("token")
+        if token != SERVER_TOKEN:
+            await websocket.close(code=1008)
+            return
     await websocket.accept()
     session = sessions.get(session_id)
     if not session:
@@ -92,7 +116,8 @@ class RunRequest(BaseModel):
 
 
 @app.post("/sessions/{session_id}/run")
-async def run_sync(session_id: str, req: RunRequest):
+async def run_sync(session_id: str, req: RunRequest, request: Request):
+    _require_token(request)
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -103,7 +128,8 @@ async def run_sync(session_id: str, req: RunRequest):
 # ── Wheel install ──────────────────────────────────────────────────────────
 
 @app.post("/sessions/{session_id}/install-wheel")
-async def install_wheel(session_id: str, wheel: Annotated[UploadFile, File()]):
+async def install_wheel(session_id: str, request: Request, wheel: Annotated[UploadFile, File()]):
+    _require_token(request)
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")

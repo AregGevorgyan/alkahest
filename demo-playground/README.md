@@ -25,7 +25,7 @@ demo-playground/
 
 **Execution routing** — the browser detects `import alkahest` / `from alkahest` in cell code and sends those cells to the Python server automatically. Pure-Python cells run in Pyodide (browser WASM). This decision is configurable in Settings.
 
-**Agent** — uses [Vercel AI SDK](https://ai-sdk.dev/) which is provider-agnostic. Set `AI_PROVIDER` to `anthropic`, `openai`, `google`, or `mistral`. The agent has a `run_python` tool wired to the same Jupyter kernel and is primed with the full alkahest skill document.
+**Agent** — uses [Vercel AI SDK](https://ai-sdk.dev/) which is provider-agnostic. Supported providers include Anthropic, OpenAI, Google, Mistral, Groq, xAI, DeepSeek, Together.ai, Fireworks, Cerebras, and any **OpenAI-compatible** endpoint (Ollama, vLLM, LiteLLM, etc.). Configure via Settings (gear icon) or `AI_PROVIDER` / `AI_MODEL` in `web/.env.local`. The agent has a `run_python` tool wired to the same Jupyter kernel and is primed with the full alkahest skill document.
 
 ## Prerequisites
 
@@ -67,6 +67,16 @@ pnpm start
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+### Hosted demo (GitHub Pages)
+
+A static build runs in the browser at **[alkahest-cas.github.io/playground](https://alkahest-cas.github.io/playground/)**:
+
+- **WASM** — SymPy and pure Python cells work with no server.
+- **Bring your own backend** — open settings (`Ctrl+/`) and set an Alkahest server URL + token, or a remote Jupyter URL + token, to run `import alkahest` and use a private kernel.
+- **Agent chat** — requires self-hosting (`pnpm start`); the hosted site is notebook-only for the agent.
+
+Pushes to `main` under `demo-playground/` deploy automatically via `.github/workflows/playground.yml`.
 
 ---
 
@@ -115,9 +125,13 @@ The agent is primed with the full `alkahest-skill/alkahest.md` document from the
 Click the gear icon (⚙) in the navbar to configure:
 
 - **Server URL** — Python server address (default `http://localhost:8000`)
+- **Backend type** — Alkahest server or remote **Jupyter Server** (URL + token)
+- **Access token** — Jupyter token or Alkahest `ALKAHEST_SERVER_TOKEN` (stored in browser)
 - **Execution mode** — Auto / WASM only / Server only
-- **AI provider** — `anthropic` | `openai` | `google` | `mistral`
+- **Ctrl+/** — toggle settings from anywhere (except while typing in a cell)
+- **AI provider** — Anthropic, OpenAI, Google, Mistral, Groq, xAI, DeepSeek, Together.ai, Fireworks, Cerebras, or OpenAI-compatible (custom base URL)
 - **AI model** — any model string supported by your provider
+- **OpenAI-compatible** — optional base URL and API key (browser-local or via `OPENAI_COMPATIBLE_*` env vars)
 
 Settings are persisted in `localStorage`.
 

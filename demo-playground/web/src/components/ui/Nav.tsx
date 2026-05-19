@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import Settings from './Settings';
+import { useSettings } from './SettingsContext';
 
 interface NavProps {
   isRecording?: boolean;
@@ -15,7 +15,7 @@ interface NavProps {
 
 export default function Nav({ isRecording, onToggleRecording, serverStatus = 'unknown', zenMode }: NavProps) {
   const pathname = usePathname();
-  const [showSettings, setShowSettings] = useState(false);
+  const { toggleSettings } = useSettings();
   const [zenVisible, setZenVisible] = useState(false);
   const zenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -97,9 +97,9 @@ export default function Nav({ isRecording, onToggleRecording, serverStatus = 'un
 
           {/* Settings */}
           <button
-            onClick={() => setShowSettings(true)}
+            onClick={toggleSettings}
             className="rounded p-1.5 text-ak-muted hover:bg-ak-code-bg hover:text-ak-fg transition-colors"
-            title="Settings"
+            title="Settings (Ctrl+/)"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="3" />
@@ -109,7 +109,6 @@ export default function Nav({ isRecording, onToggleRecording, serverStatus = 'un
         </div>
       </nav>
 
-      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
     </>
   );
 }

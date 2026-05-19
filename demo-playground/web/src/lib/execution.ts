@@ -1,3 +1,13 @@
+import type { ServerConnection } from '@/lib/server-connection';
+import { alkahestAuthHeaders } from '@/lib/server-connection';
+import { publicAssetPath } from '@/lib/hosting';
+import {
+  createJupyterKernel,
+  destroyJupyterKernel,
+  executeOnJupyter,
+  runOnJupyterSync,
+} from '@/lib/jupyter-execution';
+
 export type OutputItem =
   | { type: 'text'; stream: 'stdout' | 'stderr'; text: string }
   | { type: 'html'; html: string }
@@ -12,38 +22,64 @@ export function needsServer(code: string): boolean {
   return /\bimport\s+alkahest\b|from\s+alkahest\b/.test(code);
 }
 
-// ── Server-side execution (Jupyter kernel via FastAPI) ────────────────────────
+// ── Server-side execution ─────────────────────────────────────────────────────
 
-export async function createSession(serverUrl: string): Promise<string> {
-  const res = await fetch(`${serverUrl}/sessions`, { method: 'POST' });
+export async function createSession(conn: ServerConnection): Promise<string> {
+  if (conn.backend === 'jupyter') {
+    return createJupyterKernel(conn);
+  }
+  const res = await fetch(`${conn.httpUrl}/sessions`, {
+    method: 'POST',
+    headers: alkahestAuthHeaders(conn.token),
+  });
   if (!res.ok) throw new Error(`Failed to create session: ${res.statusText}`);
   const data = await res.json();
   return data.session_id as string;
 }
 
-export async function destroySession(serverUrl: string, sessionId: string): Promise<void> {
-  await fetch(`${serverUrl}/sessions/${sessionId}`, { method: 'DELETE' });
+export async function destroySession(conn: ServerConnection, sessionId: string): Promise<void> {
+  if (conn.backend === 'jupyter') {
+    await destroyJupyterKernel(conn, sessionId);
+    return;
+  }
+  await fetch(`${conn.httpUrl}/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: alkahestAuthHeaders(conn.token),
+  });
 }
 
-export async function installWheel(serverUrl: string, sessionId: string, file: File): Promise<void> {
+export async function installWheel(conn: ServerConnection, sessionId: string, file: File): Promise<void> {
+  if (conn.backend === 'jupyter') {
+    throw new Error('Wheel install is only supported with the Alkahest execution server');
+  }
   const form = new FormData();
   form.append('wheel', file);
-  const res = await fetch(`${serverUrl}/sessions/${sessionId}/install-wheel`, {
+  const headers = alkahestAuthHeaders(conn.token) as Record<string, string>;
+  const res = await fetch(`${conn.httpUrl}/sessions/${sessionId}/install-wheel`, {
     method: 'POST',
+    headers,
     body: form,
   });
   if (!res.ok) throw new Error(`Wheel install failed: ${res.statusText}`);
 }
 
 export function executeOnServer(
-  wsUrl: string,
+  conn: ServerConnection,
   sessionId: string,
   code: string,
   onOutput: (item: OutputItem) => void,
   onDone: (executionCount: number) => void,
   onError: (err: string) => void,
 ): () => void {
-  const ws = new WebSocket(`${wsUrl}/ws/${sessionId}`);
+  if (conn.backend === 'jupyter') {
+    return executeOnJupyter(conn, sessionId, code, onOutput, onDone, onError);
+  }
+
+  const wsBase = `${conn.wsUrl}/ws/${sessionId}`;
+  const wsUrl = conn.token
+    ? `${wsBase}?token=${encodeURIComponent(conn.token)}`
+    : wsBase;
+  const ws = new WebSocket(wsUrl);
 
   ws.onopen = () => ws.send(JSON.stringify({ code }));
 
@@ -51,7 +87,7 @@ export function executeOnServer(
     const msg = JSON.parse(event.data as string) as ServerMessage;
 
     if (msg.type === 'stream') {
-      onOutput({ type: 'text', stream: msg.name as 'stdout' | 'stderr', text: msg.text });
+      onOutput({ type: 'text', stream: (msg.name as 'stdout' | 'stderr') ?? 'stdout', text: msg.text ?? '' });
     } else if (msg.type === 'display_data' || msg.type === 'execute_result') {
       const d = msg.data as Record<string, string>;
       if (d['text/latex']) {
@@ -70,12 +106,12 @@ export function executeOnServer(
     } else if (msg.type === 'error') {
       onOutput({
         type: 'error',
-        ename: msg.ename,
-        evalue: msg.evalue,
-        traceback: msg.traceback,
+        ename: msg.ename ?? 'Error',
+        evalue: msg.evalue ?? '',
+        traceback: msg.traceback ?? [],
       });
     } else if (msg.type === 'done') {
-      onDone(msg.execution_count);
+      onDone(msg.execution_count ?? 0);
       ws.close();
     }
   };
@@ -88,15 +124,21 @@ export function executeOnServer(
   return () => ws.close();
 }
 
-// ── HTTP-only execution for agent tool calls (no streaming) ───────────────────
 export async function runOnServerSync(
-  serverUrl: string,
+  conn: ServerConnection,
   sessionId: string,
   code: string,
 ): Promise<OutputItem[]> {
-  const res = await fetch(`${serverUrl}/sessions/${sessionId}/run`, {
+  if (conn.backend === 'jupyter') {
+    return runOnJupyterSync(conn, sessionId, code);
+  }
+
+  const res = await fetch(`${conn.httpUrl}/sessions/${sessionId}/run`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...alkahestAuthHeaders(conn.token),
+    },
     body: JSON.stringify({ code }),
   });
   if (!res.ok) throw new Error(`Execution failed: ${res.statusText}`);
@@ -111,7 +153,7 @@ const pendingCallbacks = new Map<string, { resolve: (v: OutputItem[]) => void; r
 
 function getPyodideWorker(): Worker {
   if (!pyodideWorker) {
-    pyodideWorker = new Worker('/pyodide-worker.js');
+    pyodideWorker = new Worker(publicAssetPath('/pyodide-worker.js'));
     pyodideWorker.onmessage = (event) => {
       const msg = event.data as WorkerMessage;
       if (msg.type === 'ready') {
@@ -121,8 +163,8 @@ function getPyodideWorker(): Worker {
       const cb = pendingCallbacks.get(msg.id);
       if (!cb) return;
       pendingCallbacks.delete(msg.id);
-      if (msg.type === 'result') cb.resolve(msg.outputs);
-      else cb.reject(new Error(msg.error));
+      if (msg.type === 'result') cb.resolve(msg.outputs ?? []);
+      else cb.reject(new Error(msg.error ?? 'Worker error'));
     };
   }
   return pyodideWorker;
@@ -145,7 +187,6 @@ export function executeInWasm(code: string): Promise<OutputItem[]> {
   });
 }
 
-// Internal types for WebSocket protocol
 interface ServerMessage {
   type: string;
   name?: string;

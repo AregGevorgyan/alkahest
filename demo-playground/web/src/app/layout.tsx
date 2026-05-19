@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -16,7 +17,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           crossOrigin="anonymous"
         />
       </head>
-      <body className="min-h-screen bg-ak-bg text-ak-fg">{children}</body>
+      <body className="min-h-screen bg-ak-bg text-ak-fg">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

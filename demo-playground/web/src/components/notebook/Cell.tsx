@@ -108,7 +108,7 @@ export default function Cell({
   return (
     <div
       data-cell-id={cell.id}
-      className={`group relative rounded-lg border transition-all ${
+      className={`group relative overflow-hidden rounded-lg border transition-all ${
         isMarkdown
           ? 'border-ak-border hover:border-ak-muted/40'
           : cell.status === 'running'
@@ -119,7 +119,7 @@ export default function Cell({
       }`}
     >
       {/* Cell header */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-ak-border bg-ak-bg rounded-t-lg">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-ak-border bg-ak-bg">
         {/* Gutter indicator */}
         <span className="font-mono text-xs text-ak-muted w-8 shrink-0">{gutter}</span>
 
@@ -241,7 +241,7 @@ export default function Cell({
                 bracketMatching: true,
               }}
               style={{ fontSize: '0.875rem' }}
-              className="rounded-b-lg overflow-hidden"
+              className="overflow-hidden"
             />
           </div>
           <Output items={cell.outputs} />
@@ -281,7 +281,7 @@ function MarkdownCell({ source, onChange }: { source: string; onChange: (src: st
           }
         }}
         placeholder="Write markdown here… (⌘ Enter to preview)"
-        className="w-full resize-none bg-ak-code-bg px-4 py-3 text-sm text-ak-fg outline-none rounded-b-lg font-mono leading-relaxed placeholder:text-ak-muted/50"
+        className="w-full resize-none bg-ak-code-bg px-4 py-3 text-sm text-ak-fg outline-none font-mono leading-relaxed placeholder:text-ak-muted/50"
         style={{ minHeight: '80px' }}
       />
     );
@@ -291,7 +291,7 @@ function MarkdownCell({ source, onChange }: { source: string; onChange: (src: st
     <div
       onClick={() => setEditing(true)}
       title="Click to edit"
-      className="px-5 py-3 cursor-text prose prose-sm max-w-none rounded-b-lg hover:bg-ak-code-bg/30 transition-colors"
+      className="px-5 py-3 cursor-text prose prose-sm max-w-none hover:bg-ak-code-bg/30 transition-colors"
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}

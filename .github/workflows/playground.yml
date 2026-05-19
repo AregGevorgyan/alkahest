@@ -1,0 +1,52 @@
+name: Deploy playground
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demo-playground/**'
+      - '.github/workflows/playground.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: playground-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to alkahest-cas.github.io/playground
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: demo-playground/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: demo-playground/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: demo-playground
+        run: pnpm install --frozen-lockfile
+
+      - name: Build static export
+        working-directory: demo-playground/web
+        run: pnpm run build:static
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+
+      - name: Deploy to GitHub Pages site
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.WEBSITE_DEPLOY_KEY }}
+          external_repository: alkahest-cas/alkahest-cas.github.io
+          publish_branch: main
+          publish_dir: demo-playground/web/out
+          destination_dir: playground
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'deploy playground: ${{ github.sha }}'

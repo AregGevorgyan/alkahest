@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Nav from '@/components/ui/Nav';
+import HostedBanner from '@/components/ui/HostedBanner';
 
 // Load Notebook client-side only (uses Web Worker + CodeMirror)
 const Notebook = dynamic(() => import('@/components/notebook/Notebook'), { ssr: false });
@@ -58,6 +59,7 @@ export default function NotebookPage() {
         zenMode={zenMode}
       />
       <main>
+        <HostedBanner />
         <Notebook
           zenMode={zenMode}
           onServerStatusChange={setServerStatus}

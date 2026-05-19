@@ -10,6 +10,7 @@ import Output from '@/components/notebook/Output';
 import type { OutputItem } from '@/lib/execution';
 import { loadConfig } from '@/components/ui/Settings';
 import { createSession } from '@/lib/execution';
+import { connectionFromConfig } from '@/lib/server-connection';
 
 export default function AgentChat() {
   const cfg = useRef(loadConfig());
@@ -19,9 +20,14 @@ export default function AgentChat() {
 
   // Bootstrap a kernel session for the agent to use
   useEffect(() => {
+    const conn = connectionFromConfig(cfg.current);
+    if (!conn.httpUrl) {
+      setServerStatus('offline');
+      return;
+    }
     (async () => {
       try {
-        const id = await createSession(cfg.current.serverHttpUrl);
+        const id = await createSession(conn);
         setSessionId(id);
         setServerStatus('online');
       } catch {
@@ -35,7 +41,12 @@ export default function AgentChat() {
     body: {
       provider: cfg.current.aiProvider,
       model: cfg.current.aiModel,
+      customBaseUrl: cfg.current.aiCustomBaseUrl || undefined,
+      customApiKey: cfg.current.aiCustomApiKey || undefined,
       serverHttpUrl: cfg.current.serverHttpUrl,
+      serverWsUrl: cfg.current.serverWsUrl,
+      serverBackend: cfg.current.serverBackend,
+      serverToken: cfg.current.serverToken || undefined,
       sessionId,
     },
     onError: (e) => console.error('Agent error:', e),
@@ -216,7 +227,13 @@ export default function AgentChat() {
           )}
         </form>
         <p className="text-center text-xs text-ak-muted mt-2">
-          Provider: <span className="font-mono">{cfg.current.aiProvider} / {cfg.current.aiModel}</span>
+          Provider:{' '}
+          <span className="font-mono">
+            {cfg.current.aiProvider} / {cfg.current.aiModel}
+            {cfg.current.aiProvider === 'openai-compatible' && cfg.current.aiCustomBaseUrl
+              ? ` @ ${cfg.current.aiCustomBaseUrl}`
+              : ''}
+          </span>
           {' · '}Kernel: <span className="font-mono">{sessionId ? sessionId.slice(0, 8) + '…' : 'none'}</span>
         </p>
       </div>

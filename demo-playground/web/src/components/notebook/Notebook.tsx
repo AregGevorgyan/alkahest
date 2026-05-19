@@ -13,6 +13,8 @@ import {
   executeInWasm,
 } from '@/lib/execution';
 import { loadConfig } from '@/components/ui/Settings';
+import { connectionFromConfig } from '@/lib/server-connection';
+import { isStaticHosting } from '@/lib/hosting';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -147,10 +149,16 @@ export default function Notebook({ zenMode, onServerStatusChange }: NotebookProp
 
   // Create kernel session on mount; optionally auto-run all cells
   useEffect(() => {
-    const { serverHttpUrl } = cfg.current;
+    const conn = connectionFromConfig(cfg.current);
+    if (!conn.httpUrl) {
+      setServerStatus(isStaticHosting ? 'unknown' : 'offline');
+      onServerStatusChange?.(isStaticHosting ? 'unknown' : 'offline');
+      if (autoRun) setTimeout(() => setAutoRunPending(true), 800);
+      return;
+    }
     (async () => {
       try {
-        const id = await createSession(serverHttpUrl);
+        const id = await createSession(conn);
         setSessionId(id);
         setServerStatus('online');
         onServerStatusChange?.('online');
@@ -166,7 +174,7 @@ export default function Notebook({ zenMode, onServerStatusChange }: NotebookProp
       }
     })();
     return () => {
-      if (sessionId) destroySession(cfg.current.serverHttpUrl, sessionId);
+      if (sessionId) destroySession(connectionFromConfig(cfg.current), sessionId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -227,7 +235,7 @@ export default function Notebook({ zenMode, onServerStatusChange }: NotebookProp
         setExecCount(count);
 
         const cancel = executeOnServer(
-          cfg.current.serverWsUrl,
+          connectionFromConfig(cfg.current),
           sessionId,
           cell.code,
           (item) => dispatch({ type: 'APPEND_OUTPUT', id, item }),
@@ -273,7 +281,7 @@ export default function Notebook({ zenMode, onServerStatusChange }: NotebookProp
   async function handleWheelUpload(file: File) {
     if (!sessionId) return alert('Server not connected');
     try {
-      await installWheel(cfg.current.serverHttpUrl, sessionId, file);
+      await installWheel(connectionFromConfig(cfg.current), sessionId, file);
       alert(`Installed ${file.name} successfully.`);
     } catch (e) {
       alert(`Wheel install failed: ${e}`);
