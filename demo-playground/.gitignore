@@ -1,8 +1,12 @@
 node_modules/
+# pnpm is canonical; ignore accidental npm lockfile
+package-lock.json
 .next/
 dist/
 *.env
 !*.env.example
+# Next.js / local secrets (name does not match *.env)
+.env.local
 demo-videos/*
 !demo-videos/.gitkeep
 recordings/
